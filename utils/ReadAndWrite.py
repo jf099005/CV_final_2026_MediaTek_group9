@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 def read_yuv420_10bit_frames(filepath, width, height):
     frame_size_samples = width * height * 3 // 2
@@ -35,3 +36,12 @@ def write_yuv420_10bit_frame(f, y, u, v):
     f.write(y.astype(np.uint16).tobytes())
     f.write(u.astype(np.uint16).tobytes())
     f.write(v.astype(np.uint16).tobytes())
+
+def get_total_frames(filepath, width, height):
+    frame_size_samples = width * height * 3 // 2
+    frame_size_bytes = frame_size_samples * 2  # 10-bit stored as uint16
+
+    file_size = os.path.getsize(filepath)
+    total_frames = file_size // frame_size_bytes
+
+    return total_frames

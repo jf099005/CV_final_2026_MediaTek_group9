@@ -1,7 +1,9 @@
 import argparse
+import os
+from tqdm import tqdm
 
 from utils.SimpleUpScale import upscale_yuv420_10bit
-from utils.ReadAndWrite import read_yuv420_10bit_frames, parse_yuv420_10bit, write_yuv420_10bit_frame
+from utils.ReadAndWrite import read_yuv420_10bit_frames, parse_yuv420_10bit, write_yuv420_10bit_frame, get_total_frames
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -61,9 +63,13 @@ def main():
 
     out_width = args.out_width
     out_height = args.out_height
-
+    total_frames = get_total_frames(input_path, in_width, in_height)
     with open(output_path, "wb") as out_f:
-        for frame_idx, raw in read_yuv420_10bit_frames(input_path, in_width, in_height):
+        for frame_idx, raw in tqdm(
+            read_yuv420_10bit_frames(input_path, in_width, in_height),
+            total=total_frames,
+            desc="Processing frames"
+        ):
             y, u, v = parse_yuv420_10bit(raw, in_width, in_height)
 
             y_4k, u_4k, v_4k = upscale_yuv420_10bit(
@@ -73,8 +79,6 @@ def main():
             )
 
             write_yuv420_10bit_frame(out_f, y_4k, u_4k, v_4k)
-
-            print(f"Processed frame {frame_idx}")
 
     print("Done.")
     print(f"Saved 4K 10-bit YUV420 video to:")
