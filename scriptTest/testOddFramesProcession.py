@@ -5,7 +5,7 @@ from yuvProc import *
 ####################################################################################
 orgFile = '../orgYUV/odd_Procession_3840x2160_60fps_10bit_420.yuv'
 
-yuvFileListAfter = ['../results/odd_Procession_25_0_4.layer0_4k_10bit.yuv', '../results/odd_Procession_30_0_4.layer0_4k_10bit.yuv', '../results/odd_Procession_35_0_4.layer0_4k_10bit.yuv', '../results/odd_Procession_40_0_4.layer0_4k_10bit.yuv']   # yuv files after processing, from best quality to worst quality
+yuvFileListAfter = ['../results/odd_Procession_25_0_4_generated_4k.layer1.yuv', '../results/odd_Procession_30_0_4_generated_4k.layer1.yuv', '../results/odd_Procession_35_0_4_generated_4k.layer1.yuv', '../results/odd_Procession_40_0_4_generated_4k.layer1.yuv']   # yuv files after processing, from best quality to worst quality
 
 frameCount = 49 # (total frame number / 2) - 1
 videoRateReference = [9106.7368, 4217.1872, 2096.7376, 1054.3784]         # kbps, copy values from Excel file
