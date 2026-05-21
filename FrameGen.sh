@@ -2,51 +2,61 @@
 
 echo "Frame generation started"
 
-# input/output folder
-INPUT_DIR="bitstream/base"
+BASE_DIR="bitstream/base"
+ENHANCE_DIR="bitstream/enhance"
 OUTPUT_DIR="results"
 
-# python script
 PYTHON_SCRIPT="main.py"
 
-# input resolution
-WIDTH=1920
-HEIGHT=1080
+BASE_WIDTH=1920
+BASE_HEIGHT=1080
 
-# output resolution
-OUT_WIDTH=3840
-OUT_HEIGHT=2160
+ENH_WIDTH=3840
+ENH_HEIGHT=2160
 
-# create output folder if not exists
 mkdir -p "$OUTPUT_DIR"
 
-# process all .yuv files
-for input_file in "$INPUT_DIR"/*.yuv
+for base_file in "$BASE_DIR"/odd_*.layer0.yuv
 do
-    # avoid error when no .yuv file exists
-    if [ ! -f "$input_file" ]; then
-        echo "No .yuv files found in $INPUT_DIR"
+    if [ ! -f "$base_file" ]; then
+        echo "No base-layer YUV files found in $BASE_DIR"
         exit 1
     fi
 
-    filename=$(basename "$input_file" .yuv)
+    base_name=$(basename "$base_file")
 
-    output_file="$OUTPUT_DIR/${filename}_4k_10bit.yuv"
+    # odd_xxx.layer0.yuv -> even_xxx.layer1.yuv
+    enhance_name="${base_name/odd_/even_}"
+    enhance_name="${enhance_name/.layer0.yuv/.layer1.yuv}"
+
+    enhance_file="$ENHANCE_DIR/$enhance_name"
+
+    # output name
+    output_name="${base_name/.layer0.yuv/_generated_4k.layer1.yuv}"
+    output_file="$OUTPUT_DIR/$output_name"
 
     echo "----------------------------------------"
-    echo "Input : $input_file"
-    echo "Output: $output_file"
+    echo "Base       : $base_file"
+    echo "Enhancement: $enhance_file"
+    echo "Output     : $output_file"
     echo "----------------------------------------"
+
+    if [ ! -f "$enhance_file" ]; then
+        echo "Warning: enhancement file not found, skip:"
+        echo "$enhance_file"
+        continue
+    fi
 
     python "$PYTHON_SCRIPT" \
-        --input "$input_file" \
+        --base "$base_file" \
+        --enhancement "$enhance_file" \
         --output "$output_file" \
-        --width "$WIDTH" \
-        --height "$HEIGHT" \
-        --out_width "$OUT_WIDTH" \
-        --out_height "$OUT_HEIGHT"
+        --base_width "$BASE_WIDTH" \
+        --base_height "$BASE_HEIGHT" \
+        --enh_width "$ENH_WIDTH" \
+        --enh_height "$ENH_HEIGHT"
 
-    echo "Finished processing $input_file"
+    echo "Finished: $base_name"
 done
 
-echo "All YUV files finished."
+echo "All files finished."

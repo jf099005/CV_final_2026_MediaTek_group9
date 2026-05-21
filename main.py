@@ -7,47 +7,53 @@ from utils.ReadAndWrite import read_yuv420_10bit_frames, parse_yuv420_10bit, wri
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Upscale 10-bit YUV420 video to 4K 10-bit YUV420"
+        description="Generate missing 4K odd frames using FHD base layer and adjacent 4K enhancement frames"
     )
 
     parser.add_argument(
-        "--input",
+        "--base",
         required=True,
-        help="Path to input YUV file"
+        help="Path to FHD base-layer YUV file"
+    )
+
+    parser.add_argument(
+        "--enhancement",
+        required=True,
+        help="Path to 4K enhancement-layer YUV file"
     )
 
     parser.add_argument(
         "--output",
         required=True,
-        help="Path to output YUV file"
+        help="Path to output generated 4K YUV file"
     )
 
     parser.add_argument(
-        "--width",
+        "--base_width",
         type=int,
-        required=True,
-        help="Input video width"
+        default=1920,
+        help="Base-layer width"
     )
 
     parser.add_argument(
-        "--height",
+        "--base_height",
         type=int,
-        required=True,
-        help="Input video height"
+        default=1080,
+        help="Base-layer height"
     )
 
     parser.add_argument(
-        "--out_width",
+        "--enh_width",
         type=int,
         default=3840,
-        help="Output video width"
+        help="Enhancement-layer width"
     )
 
     parser.add_argument(
-        "--out_height",
+        "--enh_height",
         type=int,
         default=2160,
-        help="Output video height"
+        help="Enhancement-layer height"
     )
 
     return parser.parse_args()
@@ -55,34 +61,95 @@ def parse_args():
 def main():
     args = parse_args()
 
-    input_path = args.input
+    base_path = args.base
+    enhancement_path = args.enhancement
     output_path = args.output
 
-    in_width = args.width
-    in_height = args.height
+    base_width = args.base_width
+    base_height = args.base_height
 
-    out_width = args.out_width
-    out_height = args.out_height
-    total_frames = get_total_frames(input_path, in_width, in_height)
+    enh_width = args.enh_width
+    enh_height = args.enh_height
+
+    num_base_frames = get_total_frames(base_path, base_width, base_height)
+    num_enh_frames = get_total_frames(enhancement_path, enh_width, enh_height)
+
+    base_reader = read_yuv420_10bit_frames(
+        base_path,
+        base_width,
+        base_height
+    )
+
+    enh_reader = read_yuv420_10bit_frames(
+        enhancement_path,
+        enh_width,
+        enh_height
+    )
+    _, raw_e_prev = next(enh_reader)
+
     with open(output_path, "wb") as out_f:
-        for frame_idx, raw in tqdm(
-            read_yuv420_10bit_frames(input_path, in_width, in_height),
-            total=total_frames,
-            desc="Processing frames"
+        for base_idx, raw_b in tqdm(
+            base_reader,
+            total=num_base_frames,
+            desc="Generating 4K odd frames"
         ):
-            y, u, v = parse_yuv420_10bit(raw, in_width, in_height)
+            # 讀下一張 enhancement frame，作為後一張 4K frame
+            try:
+                _, raw_e_next = next(enh_reader)
+            except StopIteration:
+                print("No next enhancement frame. Stop.")
+                break
 
-            y_4k, u_4k, v_4k = upscale_yuv420_10bit(
-                y, u, v,
-                out_width,
-                out_height
+            # Parse current FHD base frame
+            b_y, b_u, b_v = parse_yuv420_10bit(
+                raw_b,
+                base_width,
+                base_height
             )
 
-            write_yuv420_10bit_frame(out_f, y_4k, u_4k, v_4k)
+            # Parse previous 4K enhancement frame
+            e_prev_y, e_prev_u, e_prev_v = parse_yuv420_10bit(
+                raw_e_prev,
+                enh_width,
+                enh_height
+            )
+
+            # Parse next 4K enhancement frame
+            e_next_y, e_next_u, e_next_v = parse_yuv420_10bit(
+                raw_e_next,
+                enh_width,
+                enh_height
+            )
+
+            # 現在你已經有三個 input：
+            #
+            # B[t]      = b_y, b_u, b_v
+            # E[t - 1] = e_prev_y, e_prev_u, e_prev_v
+            # E[t + 1] = e_next_y, e_next_u, e_next_v
+            #
+            # 先暫時用 simple upscale 當 output baseline
+            pred_y, pred_u, pred_v = upscale_yuv420_10bit(
+                b_y,
+                b_u,
+                b_v,
+                enh_width,
+                enh_height
+            )
+
+            write_yuv420_10bit_frame(
+                out_f,
+                pred_y,
+                pred_u,
+                pred_v
+            )
+
+            # 下一個 base frame 的 previous enhancement frame
+            raw_e_prev = raw_e_next
 
     print("Done.")
-    print(f"Saved 4K 10-bit YUV420 video to:")
+    print("Output saved to:")
     print(output_path)
+
 
 if __name__ == "__main__":
     main()
