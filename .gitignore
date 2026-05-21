@@ -5,5 +5,4 @@
 *.pyo  
 /orgYUV
 *.yuv
-*.txt
 *.xlsx
