@@ -1,0 +1,9 @@
+/.venv
+/bitstream
+/__pycache__
+*.pyc
+*.pyo  
+/orgYUV
+*.yuv
+*.txt
+*.xlsx
