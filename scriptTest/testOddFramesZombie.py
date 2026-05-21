@@ -5,7 +5,7 @@ from yuvProc import *
 ####################################################################################
 orgFile = '../orgYUV/odd_Zombie-Climbing2_3840x2160_24fps_10bit_420.yuv'
 
-yuvFileListAfter = ['../bitstream/upscaled/odd_ZombieClimbing2_27_0_4_up.layer0.yuv', '../bitstream/upscaled/odd_ZombieClimbing2_32_0_4_up.layer0.yuv', '../bitstream/upscaled/odd_ZombieClimbing2_37_0_4_up.layer0.yuv', '../bitstream/upscaled/odd_ZombieClimbing2_42_0_4_up.layer0.yuv']   # yuv files after processing, from best quality to worst quality
+yuvFileListAfter = ['../results/odd_ZombieClimbing2_27_0_4.layer0_4k_10bit.yuv', '../results/odd_ZombieClimbing2_32_0_4.layer0_4k_10bit.yuv', '../results/odd_ZombieClimbing2_37_0_4.layer0_4k_10bit.yuv', '../results/odd_ZombieClimbing2_42_0_4.layer0_4k_10bit.yuv']   # yuv files after processing, from best quality to worst quality
 
 frameCount = 49 # (total frame number / 2) - 1
 videoRateReference = [6868.4696, 3275.6272, 1563.152, 698.1952]        # kbps, copy values from Excel file
