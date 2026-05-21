@@ -1,9 +1,8 @@
 import argparse
-import os
 from tqdm import tqdm
 
-from utils.SimpleUpScale import upscale_yuv420_10bit
 from utils.ReadAndWrite import read_yuv420_10bit_frames, parse_yuv420_10bit, write_yuv420_10bit_frame, get_total_frames
+from utils.GenerateFrame import generate_frame
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -90,10 +89,9 @@ def main():
     with open(output_path, "wb") as out_f:
         for base_idx, raw_b in tqdm(
             base_reader,
-            total=num_base_frames,
+            total=num_enh_frames,
             desc="Generating 4K odd frames"
         ):
-            # 讀下一張 enhancement frame，作為後一張 4K frame
             try:
                 _, raw_e_next = next(enh_reader)
             except StopIteration:
@@ -121,19 +119,10 @@ def main():
                 enh_height
             )
 
-            # 現在你已經有三個 input：
-            #
-            # B[t]      = b_y, b_u, b_v
-            # E[t - 1] = e_prev_y, e_prev_u, e_prev_v
-            # E[t + 1] = e_next_y, e_next_u, e_next_v
-            #
-            # 先暫時用 simple upscale 當 output baseline
-            pred_y, pred_u, pred_v = upscale_yuv420_10bit(
-                b_y,
-                b_u,
-                b_v,
-                enh_width,
-                enh_height
+            pred_y, pred_u, pred_v = generate_frame(
+                b_y, b_u, b_v,
+                e_prev_y, e_prev_u, e_prev_v,
+                e_next_y, e_next_u, e_next_v
             )
 
             write_yuv420_10bit_frame(
@@ -143,7 +132,6 @@ def main():
                 pred_v
             )
 
-            # 下一個 base frame 的 previous enhancement frame
             raw_e_prev = raw_e_next
 
     print("Done.")
