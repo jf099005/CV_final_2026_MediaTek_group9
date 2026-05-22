@@ -60,6 +60,22 @@ def resize_flow(flow, out_width, out_height):
     flow_resized[..., 1] *= scale_y
     return flow_resized
 
+def fuse_chroma(base, prev, next_, mask_prev, mask_next):
+    base_f = base.astype(np.float32)
+    prev_f = prev.astype(np.float32)
+    next_f = next_.astype(np.float32)
+
+    out = 0.6 * base_f
+    weight = np.full(base.shape, 0.6, dtype=np.float32)
+
+    out[mask_prev] += 0.2 * prev_f[mask_prev]
+    weight[mask_prev] += 0.2
+
+    out[mask_next] += 0.2 * next_f[mask_next]
+    weight[mask_next] += 0.2
+
+    out = out / weight
+    return np.clip(np.rint(out), 0, 1023).astype(np.uint16)
 
 def generate_frame(b_y, b_u, b_v
             ,e_prev_y, e_prev_u, e_prev_v
@@ -111,6 +127,9 @@ def generate_frame(b_y, b_u, b_v
             out_width=3840,
             out_height=2160
             )       
+        
+        flow_prev_uv = resize_flow(flow_curr2prev, 1920, 1080)
+        flow_next_uv = resize_flow(flow_curr2next, 1920, 1080)
 
         warped_prev_y, mask_prev_y = backward_warp_plane_with_mask(
             e_prev_y,
@@ -122,6 +141,26 @@ def generate_frame(b_y, b_u, b_v
             flow_curr2next_4k
         )
 
+        warped_prev_u, mask_prev_u = backward_warp_plane_with_mask(
+            e_prev_u,
+            flow_prev_uv
+        )
+
+        warped_prev_v, mask_prev_v = backward_warp_plane_with_mask(
+            e_prev_v,
+            flow_prev_uv
+        )
+
+        warped_next_u, mask_next_u = backward_warp_plane_with_mask(
+            e_next_u,
+            flow_next_uv
+        )
+
+        warped_next_v, mask_next_v = backward_warp_plane_with_mask(
+            e_next_v,
+            flow_next_uv
+        )
+
         P_y = fuse_sources_with_mask(
             b_4k_y,
             warped_prev_y,
@@ -130,8 +169,9 @@ def generate_frame(b_y, b_u, b_v
             mask_next_y
         )
 
-        P_u = b_4k_u
-        P_v = b_4k_v
+        P_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u)
+        P_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v)
+        
         return P_y, P_u, P_v
 
 
