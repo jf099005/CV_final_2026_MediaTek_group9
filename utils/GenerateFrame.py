@@ -18,25 +18,25 @@ def fuse_sources_with_mask(base, prev, next_, mask_prev, mask_next):
     prev / next only contribute where their masks are valid.
 
     Weight:
-        base = 0.5
-        prev = 0.25 if valid
-        next = 0.25 if valid
+        base = 0.2
+        prev = 0.4 if valid
+        next = 0.4 if valid
     """
 
     base_f = base.astype(np.float32)
     prev_f = prev.astype(np.float32)
     next_f = next_.astype(np.float32)
 
-    out = 0.5 * base_f
-    weight = np.full(base.shape, 0.5, dtype=np.float32)
+    out = 0.2 * base_f
+    weight = np.full(base.shape, 0.2, dtype=np.float32)
 
     if mask_prev is not None:
-        out[mask_prev] += 0.25 * prev_f[mask_prev]
-        weight[mask_prev] += 0.25
+        out[mask_prev] += 0.4 * prev_f[mask_prev]
+        weight[mask_prev] += 0.4
 
     if mask_next is not None:
-        out[mask_next] += 0.25 * next_f[mask_next]
-        weight[mask_next] += 0.25
+        out[mask_next] += 0.4 * next_f[mask_next]
+        weight[mask_next] += 0.4
 
     out = out / weight
 
