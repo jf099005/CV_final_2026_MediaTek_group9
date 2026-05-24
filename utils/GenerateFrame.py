@@ -1,10 +1,21 @@
 from utils.Resize import resize_yuv420_10bit
 from utils.Wraping import backward_warp_plane_with_mask
 from utils.RAFTFlow import RAFTFlowEstimator
+from utils.YOnlySR import YOnlySR
 import cv2
 import numpy as np
 
 raft_estimator = RAFTFlowEstimator()
+
+sr_model = YOnlySR(
+    model_path="C:\\Users\\User\\OneDrive\\projects\\CV_final_2026_MediaTek_group9\\YUV_SR\\checkpoints_y\\best.pth",
+    scale=2,
+    bit_depth=10,
+)
+
+def upscale_yuv420_10bit_with_sr(y, u, v):
+    y_4k, u_4k, v_4k = sr_model.upscale_yuv420(y, u, v)
+    return y_4k, u_4k, v_4k
 
 def fuse_sources_with_mask(base, prev, next_, mask_prev, mask_next):
     """
@@ -81,7 +92,8 @@ def generate_frame(b_y, b_u, b_v
             ,e_prev_y, e_prev_u, e_prev_v
             ,e_next_y, e_next_u, e_next_v):
         
-        b_4k_y, b_4k_u, b_4k_v = resize_yuv420_10bit(b_y, b_u, b_v, 3840, 2160, interpolation=cv2.INTER_CUBIC)
+        #upsample B[t] to 4K, downsample E[t-1] and E[t+1] to FHD for better flow estimation
+        b_4k_y, b_4k_u, b_4k_v = upscale_yuv420_10bit_with_sr(b_y, b_u, b_v)
         e_prev_fhd_y, e_prev_fhd_u, e_prev_fhd_v = resize_yuv420_10bit(e_prev_y, e_prev_u, e_prev_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
         e_next_fhd_y, e_next_fhd_u, e_next_fhd_v = resize_yuv420_10bit(e_next_y, e_next_u, e_next_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
         
