@@ -2,7 +2,7 @@ import argparse
 from tqdm import tqdm
 
 from utils.ReadAndWrite import read_yuv420_10bit_frames, parse_yuv420_10bit, write_yuv420_10bit_frame, get_total_frames
-from utils.GenerateFrame import generate_frame
+from utils.GenerateFrame_nonAI import generate_frame
 
 def parse_args():
     parser = argparse.ArgumentParser(
