@@ -1,5 +1,9 @@
 /.venv
+/train_orig_part0
+/Release_v2
+/BasicVSR_PlusPlus
 /bitstream
+/results
 /__pycache__
 *.pyc
 *.pyo  

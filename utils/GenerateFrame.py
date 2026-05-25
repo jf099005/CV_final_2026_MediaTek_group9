@@ -8,7 +8,7 @@ import numpy as np
 raft_estimator = RAFTFlowEstimator()
 
 sr_model = YOnlySR(
-    model_path="C:\\Users\\User\\OneDrive\\projects\\CV_final_2026_MediaTek_group9\\YUV_SR\\checkpoints_y\\best.pth",
+    model_path="/mnt/20F408ADF408876E/114_2/computer_vision/CV_final_2026_MediaTek_group9/YUV_SR/checkpoints_y/best.pth",
     scale=2,
     bit_depth=10,
 )

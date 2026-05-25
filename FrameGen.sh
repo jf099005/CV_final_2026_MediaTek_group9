@@ -2,8 +2,8 @@
 
 echo "Frame generation started"
 
-BASE_DIR="bitstream/base"
-ENHANCE_DIR="bitstream/enhance"
+BASE_DIR="./Release_v2/bitstream/base"
+ENHANCE_DIR="./Release_v2/bitstream/enhance"
 OUTPUT_DIR="results"
 
 PYTHON_SCRIPT="main.py"

@@ -4,7 +4,6 @@ from torch.utils.data import Dataset
 
 from utils.yuv_io import read_yuv420_10bit_frame
 
-
 class YOnlySRDataset(Dataset):
     def __init__(
         self,
