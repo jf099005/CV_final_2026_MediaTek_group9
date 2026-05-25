@@ -2,14 +2,16 @@ import os
 import subprocess
 import numpy as np
 import math
+import cv2
 
 PIX_MAX = 1020.0  # for PSNR10
 PIX_MAX_8B = 255.0
 
 #################################################################################################
 
-def getOneFrame(yuvFile, width, height, bytesPerPel, frameNO, pixMult=1):
-    
+def getOneFrame(filepath, width, height, bytesPerPel, frameNO, pixMult=1):
+    if not '.yuv' in filepath:
+        return getOneFrameFromImage(filepath, width=width, height=height)    
     oneFrame = {}
     
     # only support 420
@@ -24,7 +26,7 @@ def getOneFrame(yuvFile, width, height, bytesPerPel, frameNO, pixMult=1):
     dt = np.dtype(dt)
     dt = dt.newbyteorder('<')
     
-    with open(yuvFile, 'rb') as f_yuv:
+    with open(filepath, 'rb') as f_yuv:
         f_yuv.seek(frameNO * byteN)
         frameY = f_yuv.read(byteN_Y)
         frameY_np = np.frombuffer(frameY, dtype=dt)
@@ -49,6 +51,58 @@ def getOneFrame(yuvFile, width, height, bytesPerPel, frameNO, pixMult=1):
         
     return oneFrame
         
+def getOneFrameFromImage(
+    jpgFile,
+    width=None,
+    height=None,
+    pixMult=1
+):
+    oneFrame = {}
+
+    # BGR
+    img = cv2.imread(jpgFile, cv2.IMREAD_COLOR)
+
+    if img is None:
+        raise ValueError(f"Cannot read image: {jpgFile}")
+
+    # optional resize
+    if width is not None and height is not None:
+        img = cv2.resize(img, (width, height))
+
+    h, w = img.shape[:2]
+
+    # BGR -> YUV
+    yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+
+    Y = yuv[:, :, 0]
+
+    # 4:2:0 downsample
+    U_full = yuv[:, :, 1]
+    V_full = yuv[:, :, 2]
+
+    U = cv2.resize(
+        U_full,
+        (w // 2, h // 2),
+        interpolation=cv2.INTER_AREA
+    )
+
+    V = cv2.resize(
+        V_full,
+        (w // 2, h // 2),
+        interpolation=cv2.INTER_AREA
+    )
+
+    # match original function behavior
+    Y = Y.astype(np.uint16) * pixMult
+    U = U.astype(np.uint16) * pixMult
+    V = V.astype(np.uint16) * pixMult
+
+    # flatten
+    oneFrame['y'] = Y.flatten()
+    oneFrame['u'] = U.flatten()
+    oneFrame['v'] = V.flatten()
+    return oneFrame
+
 def psnr10(original, compressed):
     ssd = np.sum((original.astype(np.int16) - compressed.astype(np.int16)) ** 2)
     mse = ssd / original.size

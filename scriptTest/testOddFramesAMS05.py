@@ -3,7 +3,7 @@ from yuvProc import *
 ####################################################################################
 # for test case 2
 ####################################################################################
-orgFile = '../orgYUV/odd_H2_H3_AMS05_3840x2160_10bit_420_HLG.yuv'
+orgFile = '/mnt/20F408ADF408876E/114_2/computer_vision/Release_v2/Release_v2/orgYUV/orgYUV/odd_H2_H3_AMS05_3840x2160_10bit_420_HLG.yuv'
 
 yuvFileListAfter = ['../results/odd_H2_H3_AMS05_27_0_5_generated_4k.layer1.yuv','../results/odd_H2_H3_AMS05_32_0_5_generated_4k.layer1.yuv','../results/odd_H2_H3_AMS05_37_0_5_generated_4k.layer1.yuv','../results/odd_H2_H3_AMS05_42_0_5_generated_4k.layer1.yuv']   # yuv files after processing, from best quality to worst quality
 
