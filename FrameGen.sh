@@ -6,7 +6,7 @@ BASE_DIR="bitstream/base"
 ENHANCE_DIR="bitstream/enhance"
 OUTPUT_DIR="results"
 
-PYTHON_SCRIPT="nonAI.py"
+PYTHON_SCRIPT="main.py"
 
 BASE_WIDTH=1920
 BASE_HEIGHT=1080
