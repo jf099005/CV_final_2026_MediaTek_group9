@@ -1,11 +1,13 @@
 python train_y_sr.py \
-  --lr_yuv "C:\Users\User\OneDrive\projects\CV_final_2026_MediaTek_group9\bitstream\base\odd_H2_H3_AMS05_27_0_5.layer0.yuv" \
-  --hr_yuv "C:\Users\User\OneDrive\projects\CV_final_2026_MediaTek_group9\orgYUV\odd_H2_H3_AMS05_3840x2160_10bit_420_HLG.yuv" \
+  --video_list "train_list.txt" \
   --lr_width 1920 \
   --lr_height 1080 \
   --hr_width 3840 \
   --hr_height 2160 \
-  --num_frames 30 \
+  --samples_per_epoch 1000 \
   --batch_size 4 \
   --patch_size 96 \
-  --epochs 50
+  --epochs 50 \
+  --val_stride 384 \
+  --bit_depth 10 \
+  --train_ratio 0.8
