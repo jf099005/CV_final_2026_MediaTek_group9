@@ -29,7 +29,7 @@ class PNGSRDataset(Dataset):
         assert len(self.image_paths) > 0, f"No PNG files found in {hr_png_dir}"
 
     def __len__(self):
-        return self.samples_per_epoch
+        return len(self.image_paths) - 2
 
     def _rgb_to_y(self, img_rgb: np.ndarray) -> np.ndarray:
         """BT.709 luma, returns float32 in [0, 1]."""
@@ -37,20 +37,29 @@ class PNGSRDataset(Dataset):
         y = 0.2126 * r + 0.7152 * g + 0.0722 * b
         return y.astype(np.float32)
 
-    def __getitem__(self, idx):
-        path = random.choice(self.image_paths)
-        hr_img = np.array(Image.open(path).convert("RGB"), dtype=np.float32) / 255.0
+    def _load_hr_y(self, path):
+        img = np.array(Image.open(path).convert("RGB"), dtype=np.float32) / 255.0
+        return self._rgb_to_y(img)
 
+    def _load_lr_y(self, path):
+        hr_img = np.array(Image.open(path).convert("RGB"), dtype=np.float32) / 255.0
         hr_h, hr_w = hr_img.shape[:2]
         lr_h, lr_w = hr_h // self.scale, hr_w // self.scale
-
         lr_pil = Image.fromarray((hr_img * 255).astype(np.uint8)).resize(
             (lr_w, lr_h), Image.BICUBIC
         )
         lr_img = np.array(lr_pil, dtype=np.float32) / 255.0
+        return self._rgb_to_y(lr_img), lr_h, lr_w
 
-        hr_y = self._rgb_to_y(hr_img)
-        lr_y = self._rgb_to_y(lr_img)
+    def __getitem__(self, idx):
+        frame_idx = idx + 1
+        prv_frame_idx = frame_idx - 1
+        nxt_frame_idx = frame_idx + 1
+
+        lr_y, lr_h, lr_w = self._load_lr_y(self.image_paths[frame_idx])
+        hr_y = self._load_hr_y(self.image_paths[frame_idx])
+        prv_hr_y = self._load_hr_y(self.image_paths[prv_frame_idx])
+        nxt_hr_y = self._load_hr_y(self.image_paths[nxt_frame_idx])
 
         x = random.randint(0, lr_w - self.lr_patch_size)
         y = random.randint(0, lr_h - self.lr_patch_size)
@@ -59,12 +68,23 @@ class PNGSRDataset(Dataset):
 
         hr_x = x * self.scale
         hr_y_pos = y * self.scale
+
         hr_patch = hr_y[
+            hr_y_pos : hr_y_pos + self.hr_patch_size,
+            hr_x : hr_x + self.hr_patch_size,
+        ]
+        prv_hr_patch = prv_hr_y[
+            hr_y_pos : hr_y_pos + self.hr_patch_size,
+            hr_x : hr_x + self.hr_patch_size,
+        ]
+        nxt_hr_patch = nxt_hr_y[
             hr_y_pos : hr_y_pos + self.hr_patch_size,
             hr_x : hr_x + self.hr_patch_size,
         ]
 
         lr_patch = torch.from_numpy(lr_patch).unsqueeze(0)
         hr_patch = torch.from_numpy(hr_patch).unsqueeze(0)
+        prv_hr_patch = torch.from_numpy(prv_hr_patch).unsqueeze(0)
+        nxt_hr_patch = torch.from_numpy(nxt_hr_patch).unsqueeze(0)
 
-        return lr_patch, hr_patch
+        return (lr_patch, prv_hr_patch, nxt_hr_patch), hr_patch

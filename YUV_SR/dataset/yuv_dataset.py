@@ -39,10 +39,15 @@ class YOnlySRDataset(Dataset):
         assert self.hr_height == self.lr_height * scale
 
     def __len__(self):
+        # return self.num_frames-2
         return self.samples_per_epoch
 
     def __getitem__(self, idx):
-        frame_idx = random.randint(0, self.num_frames - 1)
+        idx = idx + 1
+        # frame_idx = random.randint(0, self.num_frames - 1)
+        frame_idx = idx#random.randint(0, self.num_frames - 1)
+        prv_frame_idx = frame_idx - 1
+        nxt_frame_idx = frame_idx + 1
 
         lr_y, _, _ = read_yuv420_10bit_frame(
             self.lr_yuv_path,
@@ -56,6 +61,20 @@ class YOnlySRDataset(Dataset):
             self.hr_width,
             self.hr_height,
             frame_idx,
+        )
+
+        prv_hr_y, _, _ = read_yuv420_10bit_frame(
+            self.hr_yuv_path,
+            self.hr_width,
+            self.hr_height,
+            prv_frame_idx,
+        )
+
+        nxt_hr_y, _, _ = read_yuv420_10bit_frame(
+            self.hr_yuv_path,
+            self.hr_width,
+            self.hr_height,
+            nxt_frame_idx,
         )
 
         x = random.randint(0, self.lr_width - self.lr_patch_size)
@@ -74,13 +93,27 @@ class YOnlySRDataset(Dataset):
             hr_x:hr_x + self.hr_patch_size
         ]
 
+        prv_hr_patch = prv_hr_y[
+            hr_y_pos:hr_y_pos + self.hr_patch_size,
+            hr_x:hr_x + self.hr_patch_size
+        ]
+
+        nxt_hr_patch = nxt_hr_y[
+            hr_y_pos:hr_y_pos + self.hr_patch_size,
+            hr_x:hr_x + self.hr_patch_size
+        ]
+
         lr_patch = lr_patch.astype("float32") / self.max_value
         hr_patch = hr_patch.astype("float32") / self.max_value
+        prv_hr_patch = prv_hr_patch.astype("float32") / self.max_value
+        nxt_hr_patch = nxt_hr_patch.astype("float32") / self.max_value
 
         lr_patch = torch.from_numpy(lr_patch).unsqueeze(0)
         hr_patch = torch.from_numpy(hr_patch).unsqueeze(0)
+        prv_hr_patch = torch.from_numpy(prv_hr_patch).unsqueeze(0)
+        nxt_hr_patch = torch.from_numpy(nxt_hr_patch).unsqueeze(0)
 
-        return lr_patch, hr_patch
+        return (lr_patch, prv_hr_patch, nxt_hr_patch), hr_patch
 
 
 def build_merged_dataset(

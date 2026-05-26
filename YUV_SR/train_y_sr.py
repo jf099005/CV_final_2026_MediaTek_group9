@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from dataset.png_dataset import PNGSRDataset
 from dataset.yuv_dataset import YOnlySRDataset
-from YUV_SR.models.edsr import EDSRSmall
+from models.edsr import EDSREnd2EndModel
 
 
 def parse_args():
@@ -139,11 +139,19 @@ def train():
         )
         print(f"Validation set: {len(val_dataset)} samples")
 
-    model = EDSRSmall(
+    # model = EDSRSmall(
+    #     in_channels=1,
+    #     out_channels=1,
+    #     num_features=64,
+    #     num_blocks=8,
+    #     scale=args.scale,
+    # ).to(device)
+
+    model = EDSREnd2EndModel(
         in_channels=1,
         out_channels=1,
         num_features=64,
-        num_blocks=8,
+        num_blocks=16,
         scale=args.scale,
     ).to(device)
 
@@ -164,11 +172,13 @@ def train():
         total_loss = 0.0
 
         pbar = tqdm(dataloader, desc=f"Epoch {epoch}/{args.epochs}")
-        for lr_y, hr_y in pbar:
+        for (lr_y, prv_lr_y, nx_lr_y), hr_y in pbar:
             lr_y = lr_y.to(device)
             hr_y = hr_y.to(device)
+            prv_lr_y = prv_lr_y.to(device)
+            nx_lr_y = nx_lr_y.to(device)
 
-            pred_y = model(lr_y)
+            pred_y = model(lr_y, prv_lr_y, nx_lr_y)
             loss = criterion(pred_y, hr_y)
 
             optimizer.zero_grad()
@@ -189,10 +199,12 @@ def train():
             model.eval()
             total_val_loss = 0.0
             with torch.no_grad():
-                for lr_y, hr_y in tqdm(val_dataloader, desc="  Val", leave=False):
+                for (lr_y, prv_lr_y, nx_lr_y), hr_y in tqdm(val_dataloader, desc="  Val", leave=False):
                     lr_y = lr_y.to(device)
+                    prv_lr_y = prv_lr_y.to(device)
+                    nx_lr_y = nx_lr_y.to(device)
                     hr_y = hr_y.to(device)
-                    pred_y = model(lr_y)
+                    pred_y = model(lr_y, prv_lr_y, nx_lr_y)
                     total_val_loss += criterion(pred_y, hr_y).item()
             avg_val_loss = total_val_loss / len(val_dataloader)
             val_history.append(avg_val_loss)
