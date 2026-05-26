@@ -10,7 +10,7 @@ YUV_SR_DIR = os.path.join(PROJECT_ROOT, "YUV_SR")
 
 sys.path.append(YUV_SR_DIR)
 
-from models.edsr import EDSRSmall
+from models.edsr import EDSREnd2EndModel
 
 class YOnlySR:
     def __init__(
@@ -27,7 +27,7 @@ class YOnlySR:
         self.scale = scale
         self.max_value = (1 << bit_depth) - 1
 
-        self.model = EDSRSmall(
+        self.model = EDSREnd2EndModel(
             in_channels=1,
             out_channels=1,
             num_features=64,
@@ -41,21 +41,28 @@ class YOnlySR:
 
         self.model.eval()
 
+    def _to_tensor(self, arr):
+        return (
+            torch.from_numpy(arr.astype(np.float32) / self.max_value)
+            .unsqueeze(0)
+            .unsqueeze(0)
+            .to(self.device)
+        )
+
     @torch.no_grad()
-    def upscale_y(self, y):
+    def upscale_y(self, y, prv_y_hr, nxt_y_hr):
         """
-        Input:
-            y: np.ndarray, shape = (H, W), uint16, 10-bit Y channel
+        y:        np.ndarray (H, W) uint16, 10-bit LR Y channel
+        prv_y_hr: np.ndarray (H*scale, W*scale) uint16, HR Y of previous frame
+        nxt_y_hr: np.ndarray (H*scale, W*scale) uint16, HR Y of next frame
 
-        Output:
-            sr_y: np.ndarray, shape = (H*scale, W*scale), uint16
+        Returns: sr_y np.ndarray (H*scale, W*scale) uint16
         """
-        y_float = y.astype(np.float32) / self.max_value
+        y_tensor   = self._to_tensor(y)
+        prv_tensor = self._to_tensor(prv_y_hr)
+        nxt_tensor = self._to_tensor(nxt_y_hr)
 
-        y_tensor = torch.from_numpy(y_float)
-        y_tensor = y_tensor.unsqueeze(0).unsqueeze(0).to(self.device)
-
-        sr_y = self.model(y_tensor)
+        sr_y = self.model(y_tensor, prv_tensor, nxt_tensor)
 
         sr_y = sr_y.squeeze(0).squeeze(0).cpu().numpy()
         sr_y = np.clip(sr_y * self.max_value, 0, self.max_value)
@@ -63,33 +70,19 @@ class YOnlySR:
 
         return sr_y
 
-    def upscale_yuv420(self, y, u, v):
+    def upscale_yuv420(self, y, u, v, prv_y_hr, nxt_y_hr):
         """
-        Input:
-            y: H x W
-            u: H/2 x W/2
-            v: H/2 x W/2
+        y, u, v:          LR planes (H, W), (H/2, W/2), (H/2, W/2)
+        prv_y_hr, nxt_y_hr: HR Y planes for previous/next frames
 
-        Output:
-            sr_y: H*2 x W*2
-            sr_u: H x W
-            sr_v: H x W
+        Returns: sr_y, sr_u, sr_v at 2x resolution
         """
-        sr_y = self.upscale_y(y)
+        sr_y = self.upscale_y(y, prv_y_hr, nxt_y_hr)
 
         out_h, out_w = sr_y.shape
 
-        sr_u = cv2.resize(
-            u,
-            (out_w // 2, out_h // 2),
-            interpolation=cv2.INTER_CUBIC,
-        )
-
-        sr_v = cv2.resize(
-            v,
-            (out_w // 2, out_h // 2),
-            interpolation=cv2.INTER_CUBIC,
-        )
+        sr_u = cv2.resize(u, (out_w // 2, out_h // 2), interpolation=cv2.INTER_CUBIC)
+        sr_v = cv2.resize(v, (out_w // 2, out_h // 2), interpolation=cv2.INTER_CUBIC)
 
         sr_u = np.clip(sr_u, 0, self.max_value).round().astype(np.uint16)
         sr_v = np.clip(sr_v, 0, self.max_value).round().astype(np.uint16)

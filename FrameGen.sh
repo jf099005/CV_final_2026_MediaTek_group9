@@ -2,11 +2,12 @@
 
 echo "Frame generation started"
 
-BASE_DIR="./Release_v2/bitstream/base"
-ENHANCE_DIR="./Release_v2/bitstream/enhance"
+BASE_DIR="./bitstream/base"
+ENHANCE_DIR="./bitstream/enhance"
 OUTPUT_DIR="results"
 
 PYTHON_SCRIPT="main.py"
+MODEL_PATH="./YUV_SR/checkpoints_y/best.pth"
 
 BASE_WIDTH=1920
 BASE_HEIGHT=1080
@@ -51,6 +52,7 @@ do
         --base "$base_file" \
         --enhancement "$enhance_file" \
         --output "$output_file" \
+        --model_path "$MODEL_PATH" \
         --base_width "$BASE_WIDTH" \
         --base_height "$BASE_HEIGHT" \
         --enh_width "$ENH_WIDTH" \

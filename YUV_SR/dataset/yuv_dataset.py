@@ -1,77 +1,118 @@
 import random
+import csv
 import torch
-from torch.utils.data import Dataset, ConcatDataset
+from torch.utils.data import Dataset
 
 from utils.yuv_io import read_yuv420_10bit_frame
 
+
+def load_video_list(list_path):
+    videos = []
+
+    with open(list_path, "r", newline="") as f:
+        reader = csv.reader(f)
+
+        for row in reader:
+            if len(row) == 0:
+                continue
+
+            # 跳過註解
+            if row[0].startswith("#"):
+                continue
+
+            lr_yuv_path = row[0]
+            hr_yuv_path = row[1]
+            num_frames = int(row[2])
+
+            videos.append({
+                "lr_yuv_path": lr_yuv_path,
+                "hr_yuv_path": hr_yuv_path,
+                "num_frames": num_frames,
+            })
+
+    return videos
+
+
 class YOnlySRDataset(Dataset):
+    """
+    Training dataset:
+    random video + random frame + random patch
+    """
+
     def __init__(
         self,
-        lr_yuv_path,
-        hr_yuv_path,
+        list_path,
         lr_width,
         lr_height,
         hr_width,
         hr_height,
-        num_frames,
         scale=2,
         lr_patch_size=96,
-        samples_per_epoch=10000,
+        samples_per_epoch=1000,
         bit_depth=10,
+        train_ratio=0.8,
+        dataset_type="train",
     ):
-        self.lr_yuv_path = lr_yuv_path
-        self.hr_yuv_path = hr_yuv_path
+        self.videos = load_video_list(list_path)
+        self.dataset_type = dataset_type
 
         self.lr_width = lr_width
         self.lr_height = lr_height
         self.hr_width = hr_width
         self.hr_height = hr_height
 
-        self.num_frames = num_frames
         self.scale = scale
         self.lr_patch_size = lr_patch_size
         self.hr_patch_size = lr_patch_size * scale
 
         self.samples_per_epoch = samples_per_epoch
         self.max_value = (1 << bit_depth) - 1
+        self.train_ratio = train_ratio
 
         assert self.hr_width == self.lr_width * scale
         assert self.hr_height == self.lr_height * scale
+        assert len(self.videos) > 0
 
     def __len__(self):
-        # return self.num_frames-2
         return self.samples_per_epoch
 
     def __getitem__(self, idx):
-        idx = idx + 1
-        # frame_idx = random.randint(0, self.num_frames - 1)
-        frame_idx = idx#random.randint(0, self.num_frames - 1)
+        video = random.choice(self.videos)
+
+        num_frames = video["num_frames"]
+        split_idx = int(num_frames * self.train_ratio)
+
+        if self.dataset_type == "train":
+            frame_idx = random.randint(1, split_idx - 2)
+        else:
+            frame_idx = random.randint(split_idx + 1, num_frames - 2)
+
         prv_frame_idx = frame_idx - 1
         nxt_frame_idx = frame_idx + 1
 
         lr_y, _, _ = read_yuv420_10bit_frame(
-            self.lr_yuv_path,
+            video["lr_yuv_path"],
             self.lr_width,
             self.lr_height,
             frame_idx,
         )
 
         hr_y, _, _ = read_yuv420_10bit_frame(
-            self.hr_yuv_path,
+            video["hr_yuv_path"],
             self.hr_width,
             self.hr_height,
             frame_idx,
         )
 
         prv_hr_y, _, _ = read_yuv420_10bit_frame(
-            self.hr_yuv_path,
+            video["hr_yuv_path"],
             self.hr_width,
             self.hr_height,
             prv_frame_idx,
         )
 
         nxt_hr_y, _, _ = read_yuv420_10bit_frame(
-            self.hr_yuv_path,
+            video["hr_yuv_path"],
             self.hr_width,
             self.hr_height,
             nxt_frame_idx,
@@ -114,35 +155,3 @@ class YOnlySRDataset(Dataset):
         nxt_hr_patch = torch.from_numpy(nxt_hr_patch).unsqueeze(0)
 
         return (lr_patch, prv_hr_patch, nxt_hr_patch), hr_patch
-
-
-def build_merged_dataset(
-    path_pairs,
-    lr_width,
-    lr_height,
-    hr_width,
-    hr_height,
-    num_frames,
-    scale=2,
-    lr_patch_size=96,
-    samples_per_epoch=10000,
-    bit_depth=10,
-):
-    """Build a single merged dataset from a list of (lr_yuv_path, hr_yuv_path) pairs."""
-    datasets = [
-        YOnlySRDataset(
-            lr_yuv_path=lr_path,
-            hr_yuv_path=hr_path,
-            lr_width=lr_width,
-            lr_height=lr_height,
-            hr_width=hr_width,
-            hr_height=hr_height,
-            num_frames=num_frames,
-            scale=scale,
-            lr_patch_size=lr_patch_size,
-            samples_per_epoch=samples_per_epoch,
-            bit_depth=bit_depth,
-        )
-        for lr_path, hr_path in path_pairs
-    ]
-    return ConcatDataset(datasets)

@@ -1,35 +1,54 @@
 import argparse
-import csv
 import os
+import csv
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-from torch.utils.data import ConcatDataset, DataLoader
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset.png_dataset import PNGSRDataset
-from dataset.yuv_dataset import YOnlySRDataset
+from dataset.yuv_dataset import (
+    YOnlySRDataset,
+    # YOnlySRValidationDataset,
+)
 from models.edsr import EDSREnd2EndModel
+
+
+def plot_loss_curve(log_path, save_dir):
+    epochs, train_losses, val_losses = [], [], []
+    with open(log_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            epochs.append(int(row["epoch"]))
+            train_losses.append(float(row["train_loss"]))
+            val_losses.append(float(row["val_loss"]))
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(epochs, train_losses, marker="o", label="Train Loss")
+    ax.plot(epochs, val_losses, marker="s", label="Val Loss")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("L1 Loss")
+    ax.set_title("Training & Validation Loss")
+    ax.legend()
+    ax.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "loss_curve.png"), dpi=150)
+    plt.close(fig)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--lr_yuv", required=True, help="Path to LR FHD YUV420 10-bit file")
-    parser.add_argument("--hr_yuv", required=True, help="Path to HR 4K YUV420 10-bit file")
+    # 多影片訓練：改成讀 video_list
+    parser.add_argument("--video_list", required=True, help="Path to video list csv/txt")
 
     parser.add_argument("--lr_width", type=int, default=1920)
     parser.add_argument("--lr_height", type=int, default=1080)
     parser.add_argument("--hr_width", type=int, default=3840)
     parser.add_argument("--hr_height", type=int, default=2160)
-
-    parser.add_argument("--num_frames", type=int, required=True)
-
-    parser.add_argument("--val_lr_yuv", default=None, help="Path to validation LR YUV file")
-    parser.add_argument("--val_hr_yuv", default=None, help="Path to validation HR YUV file")
-    parser.add_argument("--val_num_frames", type=int, default=None)
-    parser.add_argument("--val_samples", type=int, default=1000)
 
     parser.add_argument("--scale", type=int, default=2)
     parser.add_argument("--patch_size", type=int, default=96)
@@ -38,8 +57,12 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr_end_factor", type=float, default=0.1,
+                        help="LR decays linearly to lr * lr_end_factor by the final epoch")
 
-    parser.add_argument("--hr_png_dir", default=None, help="Optional directory of HR PNG images for additional training data")
+    parser.add_argument("--val_stride", type=int, default=384)
+    parser.add_argument("--bit_depth", type=int, default=10)
+    parser.add_argument("--train_ratio", type=float, default=0.8)
 
     parser.add_argument("--save_dir", default="checkpoints_y")
     parser.add_argument("--resume", default=None)
@@ -47,31 +70,27 @@ def parse_args():
     return parser.parse_args()
 
 
-def save_curves(save_dir, train_history, val_history):
-    csv_path = os.path.join(save_dir, "loss_curve.csv")
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        header = ["epoch", "train_loss"] + (["val_loss"] if val_history else [])
-        writer.writerow(header)
-        for i, t_loss in enumerate(train_history, 1):
-            row = [i, t_loss]
-            if val_history:
-                row.append(val_history[i - 1] if i <= len(val_history) else "")
-            writer.writerow(row)
+def validate(model, val_loader, criterion, device):
+    model.eval()
+    total_loss = 0.0
+    total_samples = 0
 
-    plot_path = os.path.join(save_dir, "loss_curve.png")
-    plt.figure()
-    epochs = range(1, len(train_history) + 1)
-    plt.plot(epochs, train_history, label="train")
-    if val_history:
-        plt.plot(range(1, len(val_history) + 1), val_history, label="val")
-        plt.legend()
-    plt.xlabel("Epoch")
-    plt.ylabel("Avg L1 Loss")
-    plt.title("Loss Curve")
-    plt.tight_layout()
-    plt.savefig(plot_path)
-    plt.close()
+    with torch.no_grad():
+        for (lr_y, prv_lr_y, nxt_lr_y), hr_y in val_loader:
+            lr_y = lr_y.to(device)
+            hr_y = hr_y.to(device)
+            prv_lr_y = prv_lr_y.to(device)
+            nxt_lr_y = nxt_lr_y.to(device)
+
+            pred_y = model(lr_y, prv_lr_y, nxt_lr_y)
+            loss = criterion(pred_y, hr_y)
+
+            batch_size = lr_y.size(0)
+            total_loss += loss.item() * batch_size
+            total_samples += batch_size
+
+    avg_loss = total_loss / total_samples
+    return avg_loss
 
 
 def train():
@@ -79,79 +98,71 @@ def train():
 
     os.makedirs(args.save_dir, exist_ok=True)
 
+    log_path = os.path.join(args.save_dir, "loss_log.csv")
+
+    if not os.path.exists(log_path):
+        with open(log_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["epoch", "train_loss", "val_loss"])
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Device:", device)
 
-    yuv_dataset = YOnlySRDataset(
-        lr_yuv_path=args.lr_yuv,
-        hr_yuv_path=args.hr_yuv,
+    train_dataset = YOnlySRDataset(
+        list_path=args.video_list,
         lr_width=args.lr_width,
         lr_height=args.lr_height,
         hr_width=args.hr_width,
         hr_height=args.hr_height,
-        num_frames=args.num_frames,
         scale=args.scale,
         lr_patch_size=args.patch_size,
         samples_per_epoch=args.samples_per_epoch,
+        bit_depth=args.bit_depth,
+        train_ratio=args.train_ratio,
+        dataset_type="train"
     )
 
-    if args.hr_png_dir is not None:
-        png_dataset = PNGSRDataset(
-            hr_png_dir=args.hr_png_dir,
-            scale=args.scale,
-            lr_patch_size=args.patch_size,
-            samples_per_epoch=args.samples_per_epoch,
-        )
-        dataset = ConcatDataset([yuv_dataset, png_dataset])
-        print(f"Combined dataset: {len(yuv_dataset)} YUV + {len(png_dataset)} PNG samples")
-    else:
-        dataset = yuv_dataset
+    val_dataset = YOnlySRDataset(
+        list_path=args.video_list,
+        lr_width=args.lr_width,
+        lr_height=args.lr_height,
+        hr_width=args.hr_width,
+        hr_height=args.hr_height,
+        scale=args.scale,
+        lr_patch_size=args.patch_size,
+        # stride=args.val_stride,
+        samples_per_epoch=100,
+        bit_depth=args.bit_depth,
+        train_ratio=args.train_ratio,
+        dataset_type="val"
+    )
 
-    dataloader = DataLoader(
-        dataset,
+    train_loader = DataLoader(
+        train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=True,
     )
 
-    val_dataloader = None
-    if args.val_lr_yuv and args.val_hr_yuv:
-        val_num_frames = args.val_num_frames or args.num_frames
-        val_dataset = YOnlySRDataset(
-            lr_yuv_path=args.val_lr_yuv,
-            hr_yuv_path=args.val_hr_yuv,
-            lr_width=args.lr_width,
-            lr_height=args.lr_height,
-            hr_width=args.hr_width,
-            hr_height=args.hr_height,
-            num_frames=val_num_frames,
-            scale=args.scale,
-            lr_patch_size=args.patch_size,
-            samples_per_epoch=args.val_samples,
-        )
-        val_dataloader = DataLoader(
-            val_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-            num_workers=0,
-            pin_memory=True,
-        )
-        print(f"Validation set: {len(val_dataset)} samples")
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True,
+    )
 
-    # model = EDSRSmall(
-    #     in_channels=1,
-    #     out_channels=1,
-    #     num_features=64,
-    #     num_blocks=8,
-    #     scale=args.scale,
-    # ).to(device)
+    print("Video list:", args.video_list)
+    print("Train ratio:", args.train_ratio)
+    print("Train samples per epoch:", len(train_dataset))
+    print("Val samples:", len(val_dataset))
 
     model = EDSREnd2EndModel(
         in_channels=1,
         out_channels=1,
         num_features=64,
-        num_blocks=16,
+        num_blocks=8,
         scale=args.scale,
     ).to(device)
 
@@ -161,17 +172,22 @@ def train():
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
+    scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=1.0,
+        end_factor=args.lr_end_factor,
+        total_iters=args.epochs,
+    )
 
-    best_loss = float("inf")
-    train_history = []
-    val_history = []
+    best_val_loss = float("inf")
 
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
+        total_samples = 0
 
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch}/{args.epochs}")
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}")
+
         for (lr_y, prv_lr_y, nx_lr_y), hr_y in pbar:
             lr_y = lr_y.to(device)
             hr_y = hr_y.to(device)
@@ -185,45 +201,43 @@ def train():
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
-            pbar.set_postfix(loss=loss.item())
+            batch_size = lr_y.size(0)
+            total_loss += loss.item()# * batch_size
+            total_samples += batch_size
 
-        avg_train_loss = total_loss / len(dataloader)
-        train_history.append(avg_train_loss)
+            pbar.set_postfix(train_loss=loss.item())
 
-        log_msg = f"Epoch {epoch}: train_loss = {avg_train_loss:.6f}"
 
-        monitor_loss = avg_train_loss
+        train_loss = total_loss / total_samples
 
-        if val_dataloader is not None:
-            model.eval()
-            total_val_loss = 0.0
-            with torch.no_grad():
-                for (lr_y, prv_lr_y, nx_lr_y), hr_y in tqdm(val_dataloader, desc="  Val", leave=False):
-                    lr_y = lr_y.to(device)
-                    prv_lr_y = prv_lr_y.to(device)
-                    nx_lr_y = nx_lr_y.to(device)
-                    hr_y = hr_y.to(device)
-                    pred_y = model(lr_y, prv_lr_y, nx_lr_y)
-                    total_val_loss += criterion(pred_y, hr_y).item()
-            avg_val_loss = total_val_loss / len(val_dataloader)
-            val_history.append(avg_val_loss)
-            log_msg += f"  val_loss = {avg_val_loss:.6f}"
-            monitor_loss = avg_val_loss
+        val_pbar = tqdm(val_loader, desc=f"Epoch {epoch}/{args.epochs}")
+        val_loss = validate(model, val_pbar, criterion, device)
 
         scheduler.step()
-        print(log_msg + f"  lr = {scheduler.get_last_lr()[0]:.2e}")
+        current_lr = scheduler.get_last_lr()[0]
+
+        print(
+            f"Epoch {epoch}: "
+            f"train_loss = {train_loss:.6f}, "
+            f"val_loss = {val_loss:.6f}, "
+            f"lr = {current_lr:.2e}"
+        )
+
+
+        with open(log_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([epoch, train_loss, val_loss])
+
+        plot_loss_curve(log_path, args.save_dir)
 
         latest_path = os.path.join(args.save_dir, "latest.pth")
         torch.save(model.state_dict(), latest_path)
 
-        if monitor_loss < best_loss:
-            best_loss = monitor_loss
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
             best_path = os.path.join(args.save_dir, "best.pth")
             torch.save(model.state_dict(), best_path)
-            print(f"  Saved best model: {best_path}")
-
-        save_curves(args.save_dir, train_history, val_history)
+            print(f"Saved best model: {best_path}")
 
 
 if __name__ == "__main__":

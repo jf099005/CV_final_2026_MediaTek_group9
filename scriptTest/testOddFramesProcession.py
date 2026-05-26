@@ -3,7 +3,7 @@ from yuvProc import *
 ####################################################################################
 # for test case 2
 ####################################################################################
-orgFile = '/mnt/20F408ADF408876E/114_2/computer_vision/Release_v2/orgYUV/orgYUV/odd_Procession_3840x2160_60fps_10bit_420.yuv'
+orgFile = '../orgYUV/odd_Procession_3840x2160_60fps_10bit_420.yuv'
 
 yuvFileListAfter = ['../results/odd_Procession_25_0_4_generated_4k.layer1.yuv', '../results/odd_Procession_30_0_4_generated_4k.layer1.yuv', '../results/odd_Procession_35_0_4_generated_4k.layer1.yuv', '../results/odd_Procession_40_0_4_generated_4k.layer1.yuv']   # yuv files after processing, from best quality to worst quality
 

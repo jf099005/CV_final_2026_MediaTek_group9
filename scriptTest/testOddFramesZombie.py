@@ -3,7 +3,7 @@ from yuvProc import *
 ####################################################################################
 # for test case 2
 ####################################################################################
-orgFile = '../Release_v2/orgYUV/orgYUV/odd_Zombie-Climbing2_3840x2160_24fps_10bit_420.yuv'
+orgFile = '../orgYUV/odd_Zombie-Climbing2_3840x2160_24fps_10bit_420.yuv'
 
 yuvFileListAfter = ['../results/odd_ZombieClimbing2_27_0_4_generated_4k.layer1.yuv', '../results/odd_ZombieClimbing2_32_0_4_generated_4k.layer1.yuv', '../results/odd_ZombieClimbing2_37_0_4_generated_4k.layer1.yuv', '../results/odd_ZombieClimbing2_42_0_4_generated_4k.layer1.yuv']   # yuv files after processing, from best quality to worst quality
 

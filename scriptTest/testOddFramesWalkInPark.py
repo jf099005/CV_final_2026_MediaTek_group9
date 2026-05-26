@@ -3,7 +3,7 @@ from yuvProc import *
 ####################################################################################
 # for test case 2
 ####################################################################################
-orgFile = '/mnt/20F408ADF408876E/114_2/computer_vision/CV_final_2026_MediaTek_group9/Release_v2/orgYUV/orgYUV/odd_H2_WalkInPark_3840x2160_10_60fps_HLG.yuv'
+orgFile = '../orgYUV/odd_H2_WalkInPark_3840x2160_10_60fps_HLG.yuv'
 
 yuvFileListAfter = ['../results/odd_H2_WalkInPark_27_0_4_generated_4k.layer1.yuv', '../results/odd_H2_WalkInPark_32_0_4_generated_4k.layer1.yuv', '../results/odd_H2_WalkInPark_37_0_4_generated_4k.layer1.yuv', '../results/odd_H2_WalkInPark_42_0_4_generated_4k.layer1.yuv']   # yuv files after processing, from best quality to worst quality
 
