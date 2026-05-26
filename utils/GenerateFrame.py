@@ -5,15 +5,7 @@ from utils.YOnlySR import YOnlySR
 import cv2
 import numpy as np
 
-raft_estimator = RAFTFlowEstimator()
-
-sr_model = YOnlySR(
-    model_path="/mnt/20F408ADF408876E/114_2/computer_vision/CV_final_2026_MediaTek_group9/YUV_SR/checkpoints_y/best.pth",
-    scale=2,
-    bit_depth=10,
-)
-
-def upscale_yuv420_10bit_with_sr(y, u, v):
+def upscale_yuv420_10bit_with_sr(sr_model, y, u, v):
     y_4k, u_4k, v_4k = sr_model.upscale_yuv420(y, u, v)
     return y_4k, u_4k, v_4k
 
@@ -88,12 +80,15 @@ def fuse_chroma(base, prev, next_, mask_prev, mask_next):
     out = out / weight
     return np.clip(np.rint(out), 0, 1023).astype(np.uint16)
 
-def generate_frame(b_y, b_u, b_v
+def generate_frame(
+            sr_model,
+            raft_estimator,
+            b_y, b_u, b_v
             ,e_prev_y, e_prev_u, e_prev_v
             ,e_next_y, e_next_u, e_next_v):
         
         #upsample B[t] to 4K, downsample E[t-1] and E[t+1] to FHD for better flow estimation
-        b_4k_y, b_4k_u, b_4k_v = upscale_yuv420_10bit_with_sr(b_y, b_u, b_v)
+        b_4k_y, b_4k_u, b_4k_v = upscale_yuv420_10bit_with_sr(sr_model, b_y, b_u, b_v)
         e_prev_fhd_y, e_prev_fhd_u, e_prev_fhd_v = resize_yuv420_10bit(e_prev_y, e_prev_u, e_prev_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
         e_next_fhd_y, e_next_fhd_u, e_next_fhd_v = resize_yuv420_10bit(e_next_y, e_next_u, e_next_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
         

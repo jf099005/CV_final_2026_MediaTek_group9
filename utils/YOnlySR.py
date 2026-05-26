@@ -10,7 +10,7 @@ YUV_SR_DIR = os.path.join(PROJECT_ROOT, "YUV_SR")
 
 sys.path.append(YUV_SR_DIR)
 
-from models.edsr_small import EDSRSmall
+from models.edsr import EDSRSmall
 
 class YOnlySR:
     def __init__(
