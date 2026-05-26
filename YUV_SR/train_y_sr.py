@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from dataset.png_dataset import PNGSRDataset
 from dataset.yuv_dataset import YOnlySRDataset
-from models.edsr_small import EDSRSmall
+from YUV_SR.models.edsr import EDSRSmall
 
 
 def parse_args():

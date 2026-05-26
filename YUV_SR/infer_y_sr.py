@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from models.edsr_small import EDSRSmall
+from YUV_SR.models.edsr import EDSRSmall
 from utils.yuv_io import read_yuv420_10bit_frame, write_yuv420_10bit_frame
 
 

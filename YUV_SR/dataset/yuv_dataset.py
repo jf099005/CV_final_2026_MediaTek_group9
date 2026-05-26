@@ -1,6 +1,6 @@
 import random
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, ConcatDataset
 
 from utils.yuv_io import read_yuv420_10bit_frame
 
@@ -81,3 +81,35 @@ class YOnlySRDataset(Dataset):
         hr_patch = torch.from_numpy(hr_patch).unsqueeze(0)
 
         return lr_patch, hr_patch
+
+
+def build_merged_dataset(
+    path_pairs,
+    lr_width,
+    lr_height,
+    hr_width,
+    hr_height,
+    num_frames,
+    scale=2,
+    lr_patch_size=96,
+    samples_per_epoch=10000,
+    bit_depth=10,
+):
+    """Build a single merged dataset from a list of (lr_yuv_path, hr_yuv_path) pairs."""
+    datasets = [
+        YOnlySRDataset(
+            lr_yuv_path=lr_path,
+            hr_yuv_path=hr_path,
+            lr_width=lr_width,
+            lr_height=lr_height,
+            hr_width=hr_width,
+            hr_height=hr_height,
+            num_frames=num_frames,
+            scale=scale,
+            lr_patch_size=lr_patch_size,
+            samples_per_epoch=samples_per_epoch,
+            bit_depth=bit_depth,
+        )
+        for lr_path, hr_path in path_pairs
+    ]
+    return ConcatDataset(datasets)
