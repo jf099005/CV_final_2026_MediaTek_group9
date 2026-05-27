@@ -6,3 +6,5 @@
 /orgYUV
 *.yuv
 *.xlsx
+/BasicVSR_PlusPlus
+/train_orig_part0/

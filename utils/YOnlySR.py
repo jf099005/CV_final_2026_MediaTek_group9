@@ -47,6 +47,20 @@ class YOnlySR:
 
     @torch.no_grad()
     def _predict(self, y, u=None, v=None):
+        lr_width = y.shape[1]
+        lr_height = y.shape[0]
+        lr_u_full = cv2.resize(
+            u,
+            (lr_width, lr_height),
+            interpolation=cv2.INTER_CUBIC,
+        )
+
+        lr_v_full = cv2.resize(
+            v,
+            (lr_width, lr_height),
+            interpolation=cv2.INTER_CUBIC,
+        )
+
         if self.in_channels == 1:
             y_float = y.astype(np.float32) / self.max_value
             y_tensor = torch.from_numpy(y_float)
@@ -56,7 +70,7 @@ class YOnlySR:
                 raise ValueError("Input U/V channels are required for 3-channel SR prediction.")
 
             if y.ndim == 2:
-                x = np.stack([y, u, v], axis=0)
+                x = np.stack([y, lr_u_full, lr_v_full], axis=0)
             elif y.ndim == 3:
                 x = y
             else:

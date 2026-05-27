@@ -1,6 +1,6 @@
 import argparse
 from tqdm import tqdm
-
+import torch
 from utils.ReadAndWrite import read_yuv420_10bit_frames, parse_yuv420_10bit, write_yuv420_10bit_frame, get_total_frames
 from utils.GenerateFrame import generate_frame, load_model
 
@@ -91,9 +91,15 @@ def main():
         enh_height
     )
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     sr_model = load_model(
-            model_path="YUV_SR\\checkpoints_y\\best.pth",
+        model_path="YUV_SR/checkpoints_yuv/best.pth",
+        in_channels=3,
+        out_channels=3,
+        scale=2,
     )
+
     with open(output_path, "wb") as out_f:
         for base_idx, raw_b in tqdm(
             base_reader,
@@ -112,6 +118,8 @@ def main():
                 base_width,
                 base_height
             )
+
+            # print('shapes:', b_y.shape, b_u.shape, b_v.shape, e_prev_y.shape, e_prev_u.shape, e_prev_v.shape, raw_e_next[:100])
 
             # Parse next 4K enhancement frame
             e_next_y, e_next_u, e_next_v = parse_yuv420_10bit(
