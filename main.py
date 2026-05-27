@@ -55,6 +55,11 @@ def parse_args():
         help="Enhancement-layer height"
     )
 
+    parser.add_argument(
+        '--SR_only',
+        action='store_true',
+    )
+
     return parser.parse_args()
 
 def main():
@@ -128,12 +133,18 @@ def main():
                 enh_height
             )
 
-            pred_y, pred_u, pred_v = generate_frame(
-                sr_model,
-                b_y, b_u, b_v,
-                e_prev_y, e_prev_u, e_prev_v,
-                e_next_y, e_next_u, e_next_v
-            )
+            if args.SR_only:
+                pred_y, pred_u, pred_v = sr_model.upscale_yuv420(b_y, b_u, b_v)
+                # pred_y = pred_y.squeeze(0).squeeze(0).cpu().numpy()
+                # pred_u = pred_u.squeeze(0).squeeze(0).cpu().numpy()
+                # pred_v = pred_v.squeeze(0).squeeze(0).cpu().numpy()
+            else:
+                pred_y, pred_u, pred_v = generate_frame(
+                    sr_model,
+                    b_y, b_u, b_v,
+                    e_prev_y, e_prev_u, e_prev_v,
+                    e_next_y, e_next_u, e_next_v
+                )
 
             write_yuv420_10bit_frame(
                 out_f,

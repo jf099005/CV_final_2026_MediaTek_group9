@@ -14,6 +14,8 @@ BASE_HEIGHT=1080
 ENH_WIDTH=3840
 ENH_HEIGHT=2160
 
+ONLY_SR=true   # set to true to run SR upscaling only (no temporal frame generation)
+
 mkdir -p "$OUTPUT_DIR"
 
 for base_file in "$BASE_DIR"/odd_*.layer0.yuv
@@ -47,6 +49,9 @@ do
         continue
     fi
 
+    SR_FLAG=""
+    if [ "$ONLY_SR" = true ]; then SR_FLAG="--SR_only"; fi
+
     python "$PYTHON_SCRIPT" \
         --base "$base_file" \
         --enhancement "$enhance_file" \
@@ -54,7 +59,8 @@ do
         --base_width "$BASE_WIDTH" \
         --base_height "$BASE_HEIGHT" \
         --enh_width "$ENH_WIDTH" \
-        --enh_height "$ENH_HEIGHT"
+        --enh_height "$ENH_HEIGHT" \
+        $SR_FLAG
 
     echo "Finished: $base_name"
 done
