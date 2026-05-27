@@ -1,5 +1,7 @@
 import random
 import csv
+import cv2
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
@@ -51,6 +53,7 @@ class MultiVideoYOnlySRDataset(Dataset):
         samples_per_epoch=10000,
         bit_depth=10,
         train_ratio=0.8,
+        channels=1,
     ):
         self.videos = load_video_list(list_path)
 
@@ -66,7 +69,9 @@ class MultiVideoYOnlySRDataset(Dataset):
         self.samples_per_epoch = samples_per_epoch
         self.max_value = (1 << bit_depth) - 1
         self.train_ratio = train_ratio
+        self.channels = channels
 
+        assert self.channels in (1, 3)
         assert self.hr_width == self.lr_width * scale
         assert self.hr_height == self.lr_height * scale
         assert len(self.videos) > 0
@@ -82,14 +87,14 @@ class MultiVideoYOnlySRDataset(Dataset):
 
         frame_idx = random.randint(0, split_idx - 1)
 
-        lr_y, _, _ = read_yuv420_10bit_frame(
+        lr_y, lr_u, lr_v = read_yuv420_10bit_frame(
             video["lr_yuv_path"],
             self.lr_width,
             self.lr_height,
             frame_idx,
         )
 
-        hr_y, _, _ = read_yuv420_10bit_frame(
+        hr_y, hr_u, hr_v = read_yuv420_10bit_frame(
             video["hr_yuv_path"],
             self.hr_width,
             self.hr_height,
@@ -99,24 +104,64 @@ class MultiVideoYOnlySRDataset(Dataset):
         x = random.randint(0, self.lr_width - self.lr_patch_size)
         y = random.randint(0, self.lr_height - self.lr_patch_size)
 
-        lr_patch = lr_y[
-            y:y + self.lr_patch_size,
-            x:x + self.lr_patch_size
-        ]
+        if self.channels == 1:
+            lr_patch = lr_y[
+                y:y + self.lr_patch_size,
+                x:x + self.lr_patch_size
+            ]
+        else:
+            lr_u_full = cv2.resize(
+                lr_u,
+                (self.lr_width, self.lr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            lr_v_full = cv2.resize(
+                lr_v,
+                (self.lr_width, self.lr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            lr_patch = np.stack(
+                [
+                    lr_y[y:y + self.lr_patch_size, x:x + self.lr_patch_size],
+                    lr_u_full[y:y + self.lr_patch_size, x:x + self.lr_patch_size],
+                    lr_v_full[y:y + self.lr_patch_size, x:x + self.lr_patch_size],
+                ],
+                axis=0,
+            )
 
         hr_x = x * self.scale
         hr_y_pos = y * self.scale
 
-        hr_patch = hr_y[
-            hr_y_pos:hr_y_pos + self.hr_patch_size,
-            hr_x:hr_x + self.hr_patch_size
-        ]
+        if self.channels == 1:
+            hr_patch = hr_y[
+                hr_y_pos:hr_y_pos + self.hr_patch_size,
+                hr_x:hr_x + self.hr_patch_size
+            ]
+        else:
+            hr_u_full = cv2.resize(
+                hr_u,
+                (self.hr_width, self.hr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            hr_v_full = cv2.resize(
+                hr_v,
+                (self.hr_width, self.hr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            hr_patch = np.stack(
+                [
+                    hr_y[hr_y_pos:hr_y_pos + self.hr_patch_size, hr_x:hr_x + self.hr_patch_size],
+                    hr_u_full[hr_y_pos:hr_y_pos + self.hr_patch_size, hr_x:hr_x + self.hr_patch_size],
+                    hr_v_full[hr_y_pos:hr_y_pos + self.hr_patch_size, hr_x:hr_x + self.hr_patch_size],
+                ],
+                axis=0,
+            )
 
         lr_patch = lr_patch.astype("float32") / self.max_value
         hr_patch = hr_patch.astype("float32") / self.max_value
 
-        lr_patch = torch.from_numpy(lr_patch).unsqueeze(0)
-        hr_patch = torch.from_numpy(hr_patch).unsqueeze(0)
+        lr_patch = torch.from_numpy(lr_patch)
+        hr_patch = torch.from_numpy(hr_patch)
 
         return lr_patch, hr_patch
     
@@ -138,6 +183,7 @@ class MultiVideoYOnlySRValidationDataset(Dataset):
         stride=384,
         bit_depth=10,
         train_ratio=0.8,
+        channels=1,
     ):
         self.videos = load_video_list(list_path)
 
@@ -153,7 +199,9 @@ class MultiVideoYOnlySRValidationDataset(Dataset):
 
         self.max_value = (1 << bit_depth) - 1
         self.train_ratio = train_ratio
+        self.channels = channels
 
+        assert self.channels in (1, 3)
         assert self.hr_width == self.lr_width * scale
         assert self.hr_height == self.lr_height * scale
         assert len(self.videos) > 0
@@ -165,8 +213,8 @@ class MultiVideoYOnlySRValidationDataset(Dataset):
             split_idx = int(num_frames * self.train_ratio)
 
             for frame_idx in range(split_idx, num_frames):
-                for y in range(0, lr_height - lr_patch_size + 1, stride):
-                    for x in range(0, lr_width - lr_patch_size + 1, stride):
+                for y in range(0, self.lr_height - self.lr_patch_size + 1, stride):
+                    for x in range(0, self.lr_width - self.lr_patch_size + 1, stride):
                         self.samples.append((video_idx, frame_idx, x, y))
 
     def __len__(self):
@@ -176,37 +224,77 @@ class MultiVideoYOnlySRValidationDataset(Dataset):
         video_idx, frame_idx, x, y = self.samples[idx]
         video = self.videos[video_idx]
 
-        lr_y, _, _ = read_yuv420_10bit_frame(
+        lr_y, lr_u, lr_v = read_yuv420_10bit_frame(
             video["lr_yuv_path"],
             self.lr_width,
             self.lr_height,
             frame_idx,
         )
 
-        hr_y, _, _ = read_yuv420_10bit_frame(
+        hr_y, hr_u, hr_v = read_yuv420_10bit_frame(
             video["hr_yuv_path"],
             self.hr_width,
             self.hr_height,
             frame_idx,
         )
 
-        lr_patch = lr_y[
-            y:y + self.lr_patch_size,
-            x:x + self.lr_patch_size
-        ]
+        if self.channels == 1:
+            lr_patch = lr_y[
+                y:y + self.lr_patch_size,
+                x:x + self.lr_patch_size
+            ]
+        else:
+            lr_u_full = cv2.resize(
+                lr_u,
+                (self.lr_width, self.lr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            lr_v_full = cv2.resize(
+                lr_v,
+                (self.lr_width, self.lr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            lr_patch = np.stack(
+                [
+                    lr_y[y:y + self.lr_patch_size, x:x + self.lr_patch_size],
+                    lr_u_full[y:y + self.lr_patch_size, x:x + self.lr_patch_size],
+                    lr_v_full[y:y + self.lr_patch_size, x:x + self.lr_patch_size],
+                ],
+                axis=0,
+            )
 
         hr_x = x * self.scale
         hr_y_pos = y * self.scale
 
-        hr_patch = hr_y[
-            hr_y_pos:hr_y_pos + self.hr_patch_size,
-            hr_x:hr_x + self.hr_patch_size
-        ]
+        if self.channels == 1:
+            hr_patch = hr_y[
+                hr_y_pos:hr_y_pos + self.hr_patch_size,
+                hr_x:hr_x + self.hr_patch_size
+            ]
+        else:
+            hr_u_full = cv2.resize(
+                hr_u,
+                (self.hr_width, self.hr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            hr_v_full = cv2.resize(
+                hr_v,
+                (self.hr_width, self.hr_height),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            hr_patch = np.stack(
+                [
+                    hr_y[hr_y_pos:hr_y_pos + self.hr_patch_size, hr_x:hr_x + self.hr_patch_size],
+                    hr_u_full[hr_y_pos:hr_y_pos + self.hr_patch_size, hr_x:hr_x + self.hr_patch_size],
+                    hr_v_full[hr_y_pos:hr_y_pos + self.hr_patch_size, hr_x:hr_x + self.hr_patch_size],
+                ],
+                axis=0,
+            )
 
         lr_patch = lr_patch.astype("float32") / self.max_value
         hr_patch = hr_patch.astype("float32") / self.max_value
 
-        lr_patch = torch.from_numpy(lr_patch).unsqueeze(0)
-        hr_patch = torch.from_numpy(hr_patch).unsqueeze(0)
+        lr_patch = torch.from_numpy(lr_patch)
+        hr_patch = torch.from_numpy(hr_patch)
 
         return lr_patch, hr_patch

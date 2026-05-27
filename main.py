@@ -85,6 +85,11 @@ def main():
         enh_height
     )
     _, raw_e_prev = next(enh_reader)
+    e_prev_y, e_prev_u, e_prev_v = parse_yuv420_10bit(
+        raw_e_prev,
+        enh_width,
+        enh_height
+    )
 
     sr_model = load_model(
             model_path="YUV_SR\\checkpoints_y\\best.pth",
@@ -108,13 +113,6 @@ def main():
                 base_height
             )
 
-            # Parse previous 4K enhancement frame
-            e_prev_y, e_prev_u, e_prev_v = parse_yuv420_10bit(
-                raw_e_prev,
-                enh_width,
-                enh_height
-            )
-
             # Parse next 4K enhancement frame
             e_next_y, e_next_u, e_next_v = parse_yuv420_10bit(
                 raw_e_next,
@@ -136,7 +134,7 @@ def main():
                 pred_v
             )
 
-            raw_e_prev = raw_e_next
+            e_prev_y, e_prev_u, e_prev_v = e_next_y, e_next_u, e_next_v
 
     print("Done.")
     print("Output saved to:")

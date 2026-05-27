@@ -1,13 +1,1 @@
-python train_y_sr.py \
-  --video_list "train_list.txt" \
-  --lr_width 1920 \
-  --lr_height 1080 \
-  --hr_width 3840 \
-  --hr_height 2160 \
-  --samples_per_epoch 1000 \
-  --batch_size 4 \
-  --patch_size 96 \
-  --epochs 50 \
-  --val_stride 384 \
-  --bit_depth 10 \
-  --train_ratio 0.8
+python ./train_yuv_sr.py --video_list train_list.txt --batch_size 8 --epochs 50 --samples_per_epoch 1000

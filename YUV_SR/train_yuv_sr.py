@@ -15,32 +15,30 @@ from models.edsr_small import EDSRSmall
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Train a 3-channel YUV super-resolution model (Y, U, V channels)"
+    )
 
-    # 多影片訓練：改成讀 video_list
     parser.add_argument("--video_list", required=True, help="Path to video list csv/txt")
 
-    parser.add_argument("--lr_width", type=int, default=1920)
-    parser.add_argument("--lr_height", type=int, default=1080)
-    parser.add_argument("--hr_width", type=int, default=3840)
-    parser.add_argument("--hr_height", type=int, default=2160)
+    parser.add_argument("--lr_width", type=int, default=1920, help="LR input width")
+    parser.add_argument("--lr_height", type=int, default=1080, help="LR input height")
+    parser.add_argument("--hr_width", type=int, default=3840, help="HR target width")
+    parser.add_argument("--hr_height", type=int, default=2160, help="HR target height")
 
-    parser.add_argument("--scale", type=int, default=2)
-    parser.add_argument("--in_channels", type=int, default=1)
-    parser.add_argument("--out_channels", type=int, default=1)
-    parser.add_argument("--patch_size", type=int, default=96)
-    parser.add_argument("--samples_per_epoch", type=int, default=10000)
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--epochs", type=int, default=50, help="Number of epochs")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
 
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--patch_size", type=int, default=96, help="LR patch size for training")
+    parser.add_argument("--samples_per_epoch", type=int, default=10000, help="Samples per epoch")
+    parser.add_argument("--val_stride", type=int, default=384, help="Stride for validation patches")
 
-    parser.add_argument("--val_stride", type=int, default=384)
-    parser.add_argument("--bit_depth", type=int, default=10)
-    parser.add_argument("--train_ratio", type=float, default=0.8)
+    parser.add_argument("--bit_depth", type=int, default=10, help="YUV bit depth")
+    parser.add_argument("--train_ratio", type=float, default=0.8, help="Train/val split ratio")
 
-    parser.add_argument("--save_dir", default="checkpoints_y")
-    parser.add_argument("--resume", default=None)
+    parser.add_argument("--save_dir", default="checkpoints_yuv", help="Directory to save checkpoints")
+    parser.add_argument("--resume", default=None, help="Path to resume checkpoint")
 
     return parser.parse_args()
 
@@ -51,14 +49,14 @@ def validate(model, val_loader, criterion, device):
     total_samples = 0
 
     with torch.no_grad():
-        for lr_y, hr_y in val_loader:
-            lr_y = lr_y.to(device)
-            hr_y = hr_y.to(device)
+        for lr_yuv, hr_yuv in val_loader:
+            lr_yuv = lr_yuv.to(device)
+            hr_yuv = hr_yuv.to(device)
 
-            pred_y = model(lr_y)
-            loss = criterion(pred_y, hr_y)
+            pred_yuv = model(lr_yuv)
+            loss = criterion(pred_yuv, hr_yuv)
 
-            batch_size = lr_y.size(0)
+            batch_size = lr_yuv.size(0)
             total_loss += loss.item() * batch_size
             total_samples += batch_size
 
@@ -80,6 +78,8 @@ def train():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Device:", device)
+    print("Training 3-channel YUV super-resolution model (2x upsampling)")
+    print(f"Input: {args.lr_width}x{args.lr_height} -> Output: {args.hr_width}x{args.hr_height}")
 
     train_dataset = MultiVideoYOnlySRDataset(
         list_path=args.video_list,
@@ -87,12 +87,12 @@ def train():
         lr_height=args.lr_height,
         hr_width=args.hr_width,
         hr_height=args.hr_height,
-        scale=args.scale,
+        scale=2,
         lr_patch_size=args.patch_size,
         samples_per_epoch=args.samples_per_epoch,
         bit_depth=args.bit_depth,
         train_ratio=args.train_ratio,
-        channels=args.in_channels,
+        channels=3,  # 3-channel YUV
     )
 
     val_dataset = MultiVideoYOnlySRValidationDataset(
@@ -101,12 +101,12 @@ def train():
         lr_height=args.lr_height,
         hr_width=args.hr_width,
         hr_height=args.hr_height,
-        scale=args.scale,
+        scale=2,
         lr_patch_size=args.patch_size,
         stride=args.val_stride,
         bit_depth=args.bit_depth,
         train_ratio=args.train_ratio,
-        channels=args.in_channels,
+        channels=3,  # 3-channel YUV
     )
 
     train_loader = DataLoader(
@@ -131,11 +131,11 @@ def train():
     print("Val samples:", len(val_dataset))
 
     model = EDSRSmall(
-        in_channels=args.in_channels,
-        out_channels=args.out_channels,
+        in_channels=3,
+        out_channels=3,
         num_features=64,
         num_blocks=8,
-        scale=args.scale,
+        scale=2,
     ).to(device)
 
     if args.resume is not None:
@@ -154,18 +154,18 @@ def train():
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}")
 
-        for lr_y, hr_y in pbar:
-            lr_y = lr_y.to(device)
-            hr_y = hr_y.to(device)
+        for lr_yuv, hr_yuv in pbar:
+            lr_yuv = lr_yuv.to(device)
+            hr_yuv = hr_yuv.to(device)
 
-            pred_y = model(lr_y)
-            loss = criterion(pred_y, hr_y)
+            pred_yuv = model(lr_yuv)
+            loss = criterion(pred_yuv, hr_yuv)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            batch_size = lr_y.size(0)
+            batch_size = lr_yuv.size(0)
             total_loss += loss.item() * batch_size
             total_samples += batch_size
 

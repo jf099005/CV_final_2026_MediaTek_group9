@@ -7,11 +7,13 @@ import numpy as np
 
 raft_estimator = RAFTFlowEstimator()
 
-def load_model(model_path):
+def load_model(model_path, in_channels=1, out_channels=1, scale=2, bit_depth=10):
     sr_model = YOnlySR(
         model_path=model_path,
-        scale=2,
-        bit_depth=10,
+        scale=scale,
+        bit_depth=bit_depth,
+        in_channels=in_channels,
+        out_channels=out_channels,
     )
     return sr_model
 
@@ -122,7 +124,7 @@ def resize_flow(flow, out_width, out_height):
     flow_resized[..., 1] *= scale_y
     return flow_resized
 
-def fuse_chroma(base, prev, next_, mask_prev, mask_next):
+def fuse_chroma(base, prev, next_, mask_prev, mask_next, bit_depth=10, base_weight=0.5, sigma=30.0):
     base_f = base.astype(np.float32)
     prev_f = prev.astype(np.float32)
     next_f = next_.astype(np.float32)
@@ -145,9 +147,6 @@ def generate_frame(sr_model,b_y, b_u, b_v
         
         #upsample B[t] to 4K, downsample E[t-1] and E[t+1] to FHD for better flow estimation
         b_4k_y, b_4k_u, b_4k_v = upscale_yuv420_10bit_with_sr(sr_model, b_y, b_u, b_v)
-        
-        e_prev_fhd_y, e_prev_fhd_u, e_prev_fhd_v = resize_yuv420_10bit(e_prev_y, e_prev_u, e_prev_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
-        e_next_fhd_y, e_next_fhd_u, e_next_fhd_v = resize_yuv420_10bit(e_next_y, e_next_u, e_next_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
         
         raft_w = 960
         raft_h = 544
@@ -232,12 +231,16 @@ def generate_frame(sr_model,b_y, b_u, b_v
             mask_prev_y,
             mask_next_y,
             bit_depth=10,
-            base_weight=0.3,
+            base_weight=0.5,
             sigma=30.0,
         )
 
-        P_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u)
-        P_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v)
+        P_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u,bit_depth=10,
+            base_weight=0.5,
+            sigma=30.0,)
+        P_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v,bit_depth=10,
+            base_weight=0.5,
+            sigma=30.0,)
         
         return P_y, P_u, P_v
 

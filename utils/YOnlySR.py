@@ -18,6 +18,8 @@ class YOnlySR:
         model_path,
         scale=2,
         bit_depth=10,
+        in_channels=1,
+        out_channels=1,
         device=None,
     ):
         if device is None:
@@ -26,10 +28,12 @@ class YOnlySR:
         self.device = device
         self.scale = scale
         self.max_value = (1 << bit_depth) - 1
+        self.in_channels = in_channels
+        self.out_channels = out_channels
 
         self.model = EDSRSmall(
-            in_channels=1,
-            out_channels=1,
+            in_channels=in_channels,
+            out_channels=out_channels,
             num_features=64,
             num_blocks=8,
             scale=scale,
@@ -42,6 +46,35 @@ class YOnlySR:
         self.model.eval()
 
     @torch.no_grad()
+    def _predict(self, y, u=None, v=None):
+        if self.in_channels == 1:
+            y_float = y.astype(np.float32) / self.max_value
+            y_tensor = torch.from_numpy(y_float)
+            y_tensor = y_tensor.unsqueeze(0).unsqueeze(0).to(self.device)
+        elif self.in_channels == 3:
+            if u is None or v is None:
+                raise ValueError("Input U/V channels are required for 3-channel SR prediction.")
+
+            if y.ndim == 2:
+                x = np.stack([y, u, v], axis=0)
+            elif y.ndim == 3:
+                x = y
+            else:
+                raise ValueError("Expected Y input shape HxW or CxHxW for 3-channel prediction.")
+
+            x_float = x.astype(np.float32) / self.max_value
+            y_tensor = torch.from_numpy(x_float).unsqueeze(0).to(self.device)
+        else:
+            raise ValueError(f"Unsupported in_channels: {self.in_channels}")
+
+        sr = self.model(y_tensor)
+        sr = sr.squeeze(0).cpu().numpy()
+        sr = np.clip(sr * self.max_value, 0, self.max_value)
+        sr = np.round(sr).astype(np.uint16)
+
+        return sr
+
+    @torch.no_grad()
     def upscale_y(self, y):
         """
         Input:
@@ -50,18 +83,15 @@ class YOnlySR:
         Output:
             sr_y: np.ndarray, shape = (H*scale, W*scale), uint16
         """
-        y_float = y.astype(np.float32) / self.max_value
+        if self.in_channels != 1:
+            raise ValueError("upscale_y() only supports in_channels=1.")
 
-        y_tensor = torch.from_numpy(y_float)
-        y_tensor = y_tensor.unsqueeze(0).unsqueeze(0).to(self.device)
+        sr = self._predict(y)
 
-        sr_y = self.model(y_tensor)
+        if self.out_channels == 1:
+            return sr
 
-        sr_y = sr_y.squeeze(0).squeeze(0).cpu().numpy()
-        sr_y = np.clip(sr_y * self.max_value, 0, self.max_value)
-        sr_y = np.round(sr_y).astype(np.uint16)
-
-        return sr_y
+        return sr[0]
 
     def upscale_yuv420(self, y, u, v):
         """
@@ -75,20 +105,48 @@ class YOnlySR:
             sr_u: H x W
             sr_v: H x W
         """
-        sr_y = self.upscale_y(y)
+        if self.in_channels == 1:
+            sr = self._predict(y)
+        else:
+            sr = self._predict(y, u, v)
+
+        if self.out_channels == 1:
+            sr_y = sr
+            out_h, out_w = sr_y.shape
+
+            sr_u = cv2.resize(
+                u,
+                (out_w // 2, out_h // 2),
+                interpolation=cv2.INTER_CUBIC,
+            )
+
+            sr_v = cv2.resize(
+                v,
+                (out_w // 2, out_h // 2),
+                interpolation=cv2.INTER_CUBIC,
+            )
+
+            sr_u = np.clip(sr_u, 0, self.max_value).round().astype(np.uint16)
+            sr_v = np.clip(sr_v, 0, self.max_value).round().astype(np.uint16)
+
+            return sr_y, sr_u, sr_v
+
+        sr_y = sr[0]
+        sr_u_full = sr[1]
+        sr_v_full = sr[2]
 
         out_h, out_w = sr_y.shape
 
         sr_u = cv2.resize(
-            u,
+            sr_u_full,
             (out_w // 2, out_h // 2),
-            interpolation=cv2.INTER_CUBIC,
+            interpolation=cv2.INTER_AREA,
         )
 
         sr_v = cv2.resize(
-            v,
+            sr_v_full,
             (out_w // 2, out_h // 2),
-            interpolation=cv2.INTER_CUBIC,
+            interpolation=cv2.INTER_AREA,
         )
 
         sr_u = np.clip(sr_u, 0, self.max_value).round().astype(np.uint16)
