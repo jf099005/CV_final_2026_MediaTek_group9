@@ -1,13 +1,17 @@
 python train_y_sr.py \
-  --video_list "train_list.txt" \
+  --video_list "train_list.csv" \
   --lr_width 1920 \
   --lr_height 1080 \
   --hr_width 3840 \
   --hr_height 2160 \
   --samples_per_epoch 1000 \
-  --batch_size 32\
+  --batch_size 32 \
   --patch_size 96 \
   --epochs 50 \
   --val_stride 384 \
   --bit_depth 10 \
-  --train_ratio 0.8
+  --train_ratio 0.8 \
+  --lr 1e-4 \
+  --scheduler cosine_warmup \
+  --warmup_epochs 5 \
+  --min_lr 1e-7

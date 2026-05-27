@@ -22,11 +22,13 @@ def load_video_list(list_path):
 
             lr_yuv_path = row[0]
             hr_yuv_path = row[1]
-            num_frames = int(row[2])
+            even_frame_path = row[2]
+            num_frames = int(row[3])
 
             videos.append({
                 "lr_yuv_path": lr_yuv_path,
                 "hr_yuv_path": hr_yuv_path,
+                "even_frame_path": even_frame_path,
                 "num_frames": num_frames,
             })
 
@@ -42,6 +44,7 @@ class YOnlySRDataset(Dataset):
     def __init__(
         self,
         list_path,
+        # even_frame_path,
         lr_width,
         lr_height,
         hr_width,
@@ -55,6 +58,7 @@ class YOnlySRDataset(Dataset):
     ):
         self.videos = load_video_list(list_path)
         self.dataset_type = dataset_type
+        # self.even_frame_path = even_frame_path
 
         self.lr_width = lr_width
         self.lr_height = lr_height
@@ -87,8 +91,8 @@ class YOnlySRDataset(Dataset):
         else:
             frame_idx = random.randint(split_idx + 1, num_frames - 2)
 
-        prv_frame_idx = frame_idx - 1
-        nxt_frame_idx = frame_idx + 1
+        # prv_frame_idx = frame_idx - 1
+        # nxt_frame_idx = frame_idx + 1
 
         lr_y, _, _ = read_yuv420_10bit_frame(
             video["lr_yuv_path"],
@@ -105,17 +109,20 @@ class YOnlySRDataset(Dataset):
         )
 
         prv_hr_y, _, _ = read_yuv420_10bit_frame(
-            video["hr_yuv_path"],
+            # video["hr_yuv_path"],
+            video["even_frame_path"],
             self.hr_width,
             self.hr_height,
-            prv_frame_idx,
+            frame_idx,
         )
 
         nxt_hr_y, _, _ = read_yuv420_10bit_frame(
-            video["hr_yuv_path"],
+            # video["hr_yuv_path"],
+            video["even_frame_path"],
             self.hr_width,
             self.hr_height,
-            nxt_frame_idx,
+            frame_idx + 1,
+            # nxt_frame_idx,
         )
 
         x = random.randint(0, self.lr_width - self.lr_patch_size)

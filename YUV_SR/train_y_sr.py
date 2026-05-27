@@ -57,8 +57,23 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=1e-4)
+    # Scheduler options: cosine_warmup (SOTA, default) | multistep | linear
+    parser.add_argument("--scheduler", type=str, default="cosine_warmup",
+                        choices=["cosine_warmup", "multistep", "linear"],
+                        help="LR scheduler type")
+    # cosine_warmup args
+    parser.add_argument("--warmup_epochs", type=int, default=5,
+                        help="Linear warmup epochs before cosine decay (cosine_warmup only)")
+    parser.add_argument("--min_lr", type=float, default=1e-7,
+                        help="Minimum LR at end of cosine annealing")
+    # multistep args
+    parser.add_argument("--milestones", type=str, default=None,
+                        help="Comma-separated epoch milestones for MultiStepLR (e.g. '25,40')")
+    parser.add_argument("--lr_gamma", type=float, default=0.5,
+                        help="LR decay factor for MultiStepLR")
+    # legacy linear arg (kept for backward compat)
     parser.add_argument("--lr_end_factor", type=float, default=0.1,
-                        help="LR decays linearly to lr * lr_end_factor by the final epoch")
+                        help="LR decays linearly to lr * lr_end_factor (linear scheduler only)")
 
     parser.add_argument("--val_stride", type=int, default=384)
     parser.add_argument("--bit_depth", type=int, default=10)
@@ -172,12 +187,40 @@ def train():
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1.0,
-        end_factor=args.lr_end_factor,
-        total_iters=args.epochs,
-    )
+
+    if args.scheduler == "cosine_warmup":
+        # Linear warmup + CosineAnnealing — SOTA for SR (SwinIR, HAT, BasicVSR++)
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=0.1,
+            end_factor=1.0,
+            total_iters=args.warmup_epochs,
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max(args.epochs - args.warmup_epochs, 1),
+            eta_min=args.min_lr,
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[args.warmup_epochs],
+        )
+        print(f"Scheduler: cosine_warmup (warmup={args.warmup_epochs} epochs, min_lr={args.min_lr:.1e})")
+    elif args.scheduler == "multistep":
+        milestones = [int(m) for m in args.milestones.split(",")] if args.milestones else [int(args.epochs * 0.5), int(args.epochs * 0.8)]
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=milestones, gamma=args.lr_gamma
+        )
+        print(f"Scheduler: multistep (milestones={milestones}, gamma={args.lr_gamma})")
+    else:  # linear
+        scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=args.lr_end_factor,
+            total_iters=args.epochs,
+        )
+        print(f"Scheduler: linear (end_factor={args.lr_end_factor})")
 
     best_val_loss = float("inf")
 
