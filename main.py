@@ -2,7 +2,7 @@ import argparse
 from tqdm import tqdm
 
 from utils.ReadAndWrite import read_yuv420_10bit_frames, parse_yuv420_10bit, write_yuv420_10bit_frame, get_total_frames
-from utils.GenerateFrame import generate_frame
+from utils.GenerateFrame import generate_frame, load_model
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -86,6 +86,9 @@ def main():
     )
     _, raw_e_prev = next(enh_reader)
 
+    sr_model = load_model(
+            model_path="YUV_SR\\checkpoints_y\\best.pth",
+    )
     with open(output_path, "wb") as out_f:
         for base_idx, raw_b in tqdm(
             base_reader,
@@ -120,6 +123,7 @@ def main():
             )
 
             pred_y, pred_u, pred_v = generate_frame(
+                sr_model,
                 b_y, b_u, b_v,
                 e_prev_y, e_prev_u, e_prev_v,
                 e_next_y, e_next_u, e_next_v
