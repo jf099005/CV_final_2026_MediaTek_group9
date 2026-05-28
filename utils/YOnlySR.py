@@ -46,7 +46,7 @@ class YOnlySR:
         self.model.eval()
 
     @torch.no_grad()
-    def _predict(self, y, u=None, v=None):
+    def _predict(self, y, u, v):
         lr_width = y.shape[1]
         lr_height = y.shape[0]
         lr_u_full = cv2.resize(
@@ -61,11 +61,12 @@ class YOnlySR:
             interpolation=cv2.INTER_CUBIC,
         )
 
-        if self.in_channels == 1:
-            y_float = y.astype(np.float32) / self.max_value
-            y_tensor = torch.from_numpy(y_float)
-            y_tensor = y_tensor.unsqueeze(0).unsqueeze(0).to(self.device)
-        elif self.in_channels == 3:
+        # if self.in_channels == 1:
+        #     y_float = y.astype(np.float32) / self.max_value
+        #     y_tensor = torch.from_numpy(y_float)
+        #     y_tensor = y_tensor.unsqueeze(0).unsqueeze(0).to(self.device)
+        assert self.in_channels == 3
+        if True:
             if u is None or v is None:
                 raise ValueError("Input U/V channels are required for 3-channel SR prediction.")
 
@@ -88,25 +89,26 @@ class YOnlySR:
 
         return sr
 
+    # @torch.no_grad()
+    # def upscale_y(self, y):
+    #     """
+    #     Input:
+    #         y: np.ndarray, shape = (H, W), uint16, 10-bit Y channel
+
+    #     Output:
+    #         sr_y: np.ndarray, shape = (H*scale, W*scale), uint16
+    #     """
+    #     if self.in_channels != 1:
+    #         raise ValueError("upscale_y() only supports in_channels=1.")
+
+    #     sr = self._predict(y)
+
+    #     if self.out_channels == 1:
+    #         return sr
+
+    #     return sr[0]
+
     @torch.no_grad()
-    def upscale_y(self, y):
-        """
-        Input:
-            y: np.ndarray, shape = (H, W), uint16, 10-bit Y channel
-
-        Output:
-            sr_y: np.ndarray, shape = (H*scale, W*scale), uint16
-        """
-        if self.in_channels != 1:
-            raise ValueError("upscale_y() only supports in_channels=1.")
-
-        sr = self._predict(y)
-
-        if self.out_channels == 1:
-            return sr
-
-        return sr[0]
-
     def upscale_yuv420(self, y, u, v):
         """
         Input:

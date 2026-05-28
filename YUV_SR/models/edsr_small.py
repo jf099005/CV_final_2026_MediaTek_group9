@@ -35,7 +35,7 @@ class UpsamplerX2(nn.Module):
 class EDSRSmall(nn.Module):
     def __init__(
         self,
-        in_channels=1,
+        in_channels=3,
         out_channels=1,
         num_features=64,
         num_blocks=8,

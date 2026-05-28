@@ -21,9 +21,6 @@ def upscale_yuv420_10bit_with_sr(model, y, u, v):
     y_4k, u_4k, v_4k = model.upscale_yuv420(y, u, v)
     return y_4k, u_4k, v_4k
 
-import numpy as np
-
-
 def fuse_sources_with_mask_adaptive(
     base,
     prev,
