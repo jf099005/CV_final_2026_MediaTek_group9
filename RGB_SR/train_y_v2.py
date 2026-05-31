@@ -20,17 +20,52 @@ sys.path.append(PROJECT_ROOT)
 
 
 import pytorch_msssim
+import torch.nn.functional as F
+
+_SOBEL_X = torch.tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]], dtype=torch.float32).view(1, 1, 3, 3)
+_SOBEL_Y = torch.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]], dtype=torch.float32).view(1, 1, 3, 3)
+
 
 class CombinedLoss(nn.Module):
-    def __init__(self, alpha=0.84):
+    """
+    Loss = w_ssim * (1-SSIM) + w_l1 * L1 + w_grad * Gradient + w_fft * FFT
+    Gradient loss penalises missing edges; FFT loss penalises missing high-freq texture.
+    """
+    def __init__(self, w_ssim=0.70, w_l1=0.15, w_grad=0.10, w_fft=0.05):
         super().__init__()
-        self.alpha = alpha
+        self.w_ssim = w_ssim
+        self.w_l1   = w_l1
+        self.w_grad = w_grad
+        self.w_fft  = w_fft
         self.l1 = nn.L1Loss()
 
+    def _gradient_loss(self, pred, target):
+        # Build Sobel kernels on the same device/dtype as pred every call.
+        # Cheap: just a view + to(), no allocation when already correct.
+        kx = _SOBEL_X.expand(3, 1, 3, 3).contiguous().to(device=pred.device, dtype=pred.dtype)
+        ky = _SOBEL_Y.expand(3, 1, 3, 3).contiguous().to(device=pred.device, dtype=pred.dtype)
+        gx_p = F.conv2d(pred,   kx, groups=3, padding=1)
+        gx_t = F.conv2d(target, kx, groups=3, padding=1)
+        gy_p = F.conv2d(pred,   ky, groups=3, padding=1)
+        gy_t = F.conv2d(target, ky, groups=3, padding=1)
+        return F.l1_loss(gx_p, gx_t) + F.l1_loss(gy_p, gy_t)
+
+    def _fft_loss(self, pred, target):
+        p = torch.fft.rfft2(pred.float(),   norm="ortho")
+        t = torch.fft.rfft2(target.float(), norm="ortho")
+        return F.l1_loss(p.abs(), t.abs())
+
     def forward(self, pred, target):
-        l1_loss   = self.l1(pred, target)
         ssim_loss = 1 - pytorch_msssim.ssim(pred, target, data_range=1.0)
-        return self.alpha * ssim_loss + (1 - self.alpha) * l1_loss
+        l1_loss   = self.l1(pred, target)
+        grad_loss = self._gradient_loss(pred, target)
+        fft_loss  = self._fft_loss(pred, target)
+        return (
+            self.w_ssim * ssim_loss
+            + self.w_l1  * l1_loss
+            + self.w_grad * grad_loss
+            + self.w_fft  * fft_loss
+        )
 
 def plot_loss_curve(log_path, save_dir):
     epochs, train_losses, val_losses = [], [], []
@@ -166,14 +201,14 @@ def train():
 
     if args.resume is not None:
         print("Loading checkpoint:", args.resume)
-        model.load_state_dict(torch.load(args.resume, map_location=device))
+        model.load_state_dict(torch.load(args.resume, map_location=device, weights_only=True))
 
     if args.freeze_backbone:
         freeze_backbone(model)
 
     # criterion = nn.L1Loss()/
     # criterion = nn.MSELoss()
-    criterion = CombinedLoss()
+    criterion = CombinedLoss().to(device)
     trainable_params = (
         model.fusion_layer.parameters()
         if args.freeze_backbone
