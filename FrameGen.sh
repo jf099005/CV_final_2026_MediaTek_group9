@@ -15,7 +15,16 @@ BASE_HEIGHT=1080
 ENH_WIDTH=3840
 ENH_HEIGHT=2160
 
+ONLY_EDSR=true
+
+naive=false
+
+
+
 mkdir -p "$OUTPUT_DIR"
+if [ "$naive" = true ]; then
+    mkdir -p "warped_hr"
+fi
 
 for base_file in "$BASE_DIR"/odd_*.layer0.yuv
 do
@@ -34,7 +43,11 @@ do
 
     # output name
     output_name="${base_name/.layer0.yuv/_generated_4k.layer1.yuv}"
-    output_file="$OUTPUT_DIR/$output_name"
+    if [ "$naive" = true ]; then
+        output_file="warped_hr/$output_name"
+    else
+        output_file="$OUTPUT_DIR/$output_name"
+    fi
 
     echo "----------------------------------------"
     echo "Base       : $base_file"
@@ -56,7 +69,9 @@ do
         --base_width "$BASE_WIDTH" \
         --base_height "$BASE_HEIGHT" \
         --enh_width "$ENH_WIDTH" \
-        --enh_height "$ENH_HEIGHT"
+        --enh_height "$ENH_HEIGHT" \
+        $( [ "$ONLY_EDSR" = true ] && echo "--only_edsr" )\
+        $( [ "$naive" = true ] && echo "--naive" )
 
     echo "Finished: $base_name"
 done

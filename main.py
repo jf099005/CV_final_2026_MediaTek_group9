@@ -32,8 +32,15 @@ def parse_args():
 
     parser.add_argument(
         "--model_path",
-        required=True,
+        required=False,
+        default=None,
         help="Path to trained EDSREnd2EndModel checkpoint (.pth)"
+    )
+
+    parser.add_argument(
+        "--naive",
+        action="store_true",
+        help="If set, skip SR model and upscale base frame by linear interpolation"
     )
 
     parser.add_argument(
@@ -65,13 +72,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--scale",
-        type=int,
-        default=2,
-        help="Super-resolution scale factor"
-    )
-
-    parser.add_argument(
         "--bit_depth",
         type=int,
         default=10,
@@ -91,17 +91,35 @@ def parse_args():
         help="Frame rate used when encoding the output video (default: 30)"
     )
 
+    parser.add_argument(
+        "--only_edsr",
+        action="store_true",
+        help="If set, only run the EDSR upsampling without flow-based fusion (  for ablation study)"
+    )
+
+    parser.add_argument(
+        "--hr_input_type",
+        type=str,
+        default='warped',
+        choices=['warped', 'prv and nxt'],
+        help="Type of HR input used for flow-based fusion. 'warped': use the warped previous and next frames as HR references; 'prv and nxt': directly use the original previous and next frames as HR references (without warping). Default: 'warped'."
+    )
+
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    sr_model = YOnlySR(
-        model_path=args.model_path,
-        scale=args.scale,
-        bit_depth=args.bit_depth,
-    )
+    if args.naive:
+        sr_model = None
+    else:
+        if args.model_path is None:
+            raise ValueError("--model_path is required unless --naive is set")
+        sr_model = YOnlySR(
+            model_path=args.model_path,
+            bit_depth=args.bit_depth,
+        )
 
     base_path = args.base
     enhancement_path = args.enhancement
@@ -151,6 +169,8 @@ def main():
                 b_y, b_u, b_v,
                 e_prev_y, e_prev_u, e_prev_v,
                 e_next_y, e_next_u, e_next_v,
+                only_edsr=args.only_edsr,
+                hr_input_type=args.hr_input_type
             )
 
             write_yuv420_10bit_frame(out_f, pred_y, pred_u, pred_v)

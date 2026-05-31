@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT_FILE="$SCRIPT_DIR/results.txt"
+OUTPUT_FILE="$SCRIPT_DIR/outputs.txt"
 
 > "$OUTPUT_FILE"
 

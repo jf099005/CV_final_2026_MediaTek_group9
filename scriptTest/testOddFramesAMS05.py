@@ -16,33 +16,33 @@ videoPSNRBefore = [33.354902657018094, 32.47356390973943, 31.410535115309045, 30
 # test case 1, basic BDrate calculation, just simple examples
 
 ####################################################################################
-print('case 1:')
-anchorRate = [9619.6875, 2327.2125, 1266.7425, 752.3925]
-anchorPSNR = [43.9141, 42.1190, 41.2022, 40.1110]
-testRate = [10172.8875, 2699.9325, 1479.57, 867.435]
-testPSNR = [43.9295, 42.1153, 41.1366, 39.9195]
+# print('case 1:')
+# anchorRate = [9619.6875, 2327.2125, 1266.7425, 752.3925]
+# anchorPSNR = [43.9141, 42.1190, 41.2022, 40.1110]
+# testRate = [10172.8875, 2699.9325, 1479.57, 867.435]
+# testPSNR = [43.9295, 42.1153, 41.1366, 39.9195]
 
-valBDrate = bd_rate(anchorRate, anchorPSNR, testRate, testPSNR)
+# valBDrate = bd_rate(anchorRate, anchorPSNR, testRate, testPSNR)
 
-print('  BDrate should be 15.851%')
-print(f'  Calculated BDrate = {valBDrate:0.3f}%')
+# print('  BDrate should be 15.851%')
+# print(f'  Calculated BDrate = {valBDrate:0.3f}%')
 
-anchorRate = [9619.6875, 2327.2125, 1266.7425, 752.3925]
-anchorPSNR = [43.9141, 42.1190, 41.2022, 40.1110]
-testRate = anchorRate
-testPSNR = [x + 0.1 for x in anchorPSNR] # assume PSNR improved
+# anchorRate = [9619.6875, 2327.2125, 1266.7425, 752.3925]
+# anchorPSNR = [43.9141, 42.1190, 41.2022, 40.1110]
+# testRate = anchorRate
+# testPSNR = [x + 0.1 for x in anchorPSNR] # assume PSNR improved
 
-valBDrate = bd_rate(anchorRate, anchorPSNR, testRate, testPSNR)
+# valBDrate = bd_rate(anchorRate, anchorPSNR, testRate, testPSNR)
 
-print('\n  Fake PSNR improvement:')
-print(f'  Calculated BDrate = {valBDrate:0.3f}%')
+# print('\n  Fake PSNR improvement:')
+# print(f'  Calculated BDrate = {valBDrate:0.3f}%')
 
 
-####################################################################################
+# ####################################################################################
 
-# test case 2, use this case to calculate your BD rate
+# # test case 2, use this case to calculate your BD rate
 
-####################################################################################
+# ####################################################################################
 
 print('\ncase 2:')
 

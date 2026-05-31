@@ -27,43 +27,20 @@ class PNGSRDataset(Dataset):
         train_ratio=0.8,
         dataset_type="train",
     ):
+        self.hr_png_dir = hr_png_dir
         self.scale = scale
         self.lr_patch_size = lr_patch_size
         self.hr_patch_size = lr_patch_size * scale
         self.samples_per_epoch = samples_per_epoch
+        self.train_ratio = train_ratio
         self.dataset_type = dataset_type
 
-        hr_png_dirs = [hr_png_dir] if isinstance(hr_png_dir, str) else list(hr_png_dir)
-
-        # Flat list of all image paths; valid_center_indices holds global indices
-        # of frames that have a prev/next within the same directory and correct split.
-        self.image_paths = []
-        self.valid_center_indices = []
-
-        for dir_path in hr_png_dirs:
-            dir_frames = sorted(
-                os.path.join(dir_path, f)
-                for f in os.listdir(dir_path)
-                if f.lower().endswith(".png")
-            )
-            assert len(dir_frames) >= 3, f"Need at least 3 PNG files in {dir_path}, found {len(dir_frames)}"
-
-            offset = len(self.image_paths)
-            self.image_paths.extend(dir_frames)
-
-            n = len(dir_frames)
-            split_idx = int(n * train_ratio)
-
-            if dataset_type == "train":
-                valid_range = range(1, split_idx - 1)
-            else:
-                valid_range = range(split_idx + 1, n - 1)
-
-            self.valid_center_indices.extend(offset + i for i in valid_range)
-
-        assert len(self.valid_center_indices) > 0, (
-            f"No valid frames found for dataset_type='{dataset_type}' in: {hr_png_dirs}"
+        self.image_paths = sorted(
+            os.path.join(hr_png_dir, f)
+            for f in os.listdir(hr_png_dir)
+            if f.lower().endswith(".png")
         )
+        assert len(self.image_paths) > 0, f"No PNG files found in {hr_png_dir}"
 
         self.raft_estimator = RAFTFlowEstimator()
 
@@ -92,7 +69,14 @@ class PNGSRDataset(Dataset):
         return self._rgb_to_y(hr_img), self._rgb_to_y(lr_img), lr_h, lr_w
 
     def __getitem__(self, _idx):
-        frame_idx = random.choice(self.valid_center_indices)
+        num_frames = len(self.image_paths)
+        split_idx = int(num_frames * self.train_ratio)
+
+        if self.dataset_type == "train":
+            frame_idx = random.randint(1, split_idx - 2)
+        else:
+            frame_idx = random.randint(split_idx + 1, num_frames - 2)
+
         prv_frame_idx = frame_idx - 1
         nxt_frame_idx = frame_idx + 1
 
