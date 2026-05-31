@@ -1,0 +1,13 @@
+python train_y_v2.py \
+  --train_list /mnt/20F408ADF408876E/114_2/computer_vision/CV_final_2026_MediaTek_group9/RGB_SR/train_list.csv \
+  --scale 2 \
+  --patch_size 128 \
+  --samples_per_epoch 100 \
+  --batch_size 8 \
+  --epochs 10 \
+  --lr 1e-4 \
+  --lr_end_factor 0.01 \
+  --train_ratio 0.8 \
+  --save_dir checkpoints_rgb\
+  --freeze_backbone \
+  --resume checkpoints_rgb/best.pth

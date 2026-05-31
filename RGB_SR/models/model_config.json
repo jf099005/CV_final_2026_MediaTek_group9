@@ -1,0 +1,14 @@
+{
+  "model": {
+    "type": "carn",
+    "in_channels": 3,
+    "out_channels": 3,
+    "num_features": 32,
+    "fusion_num_blocks": 4,
+    "scale": 2,
+    "group": 4,
+    "carn_pretrained_path": "/mnt/20F408ADF408876E/114_2/computer_vision/CV_final_2026_MediaTek_group9/CARN-pytorch/checkpoint/carn_m.pth",
+    "use_half": true,
+    "tile_overlap": 8
+  }
+}

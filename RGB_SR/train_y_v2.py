@@ -1,29 +1,36 @@
 import argparse
+import json
 import os
 import csv
 import sys
-    
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset.RLR_dataset_warping import (
-    YOnlySRDataset,
-    # YOnlySRValidationDataset,
-)
-
 from dataset.png_dataset import PNGSRDataset
-from models.edsr_v2 import EDSREnd2EndModel
+from models.carn_v1 import CARNEnd2EndModel
 
 PROJECT_ROOT = '/mnt/20F408ADF408876E/114_2/computer_vision/CV_final_2026_MediaTek_group9'
-utils_DIR = os.path.join(PROJECT_ROOT, "utils")
-sys.path.append(utils_DIR)
+sys.path.append(PROJECT_ROOT)
 
-# from utils.yuv_io import read_yuv420_10bit_frame, get_total_frames_yuv420_10bit
+
+import pytorch_msssim
+
+class CombinedLoss(nn.Module):
+    def __init__(self, alpha=0.84):
+        super().__init__()
+        self.alpha = alpha
+        self.l1 = nn.L1Loss()
+
+    def forward(self, pred, target):
+        l1_loss   = self.l1(pred, target)
+        ssim_loss = 1 - pytorch_msssim.ssim(pred, target, data_range=1.0)
+        return self.alpha * ssim_loss + (1 - self.alpha) * l1_loss
 
 def plot_loss_curve(log_path, save_dir):
     epochs, train_losses, val_losses = [], [], []
@@ -50,17 +57,13 @@ def plot_loss_curve(log_path, save_dir):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # 多影片訓練：改成讀 video_list
-    parser.add_argument("--video_list", required=True, help="Path to video list csv/txt")
-
-    parser.add_argument("--lr_width", type=int, default=1920)
-    parser.add_argument("--lr_height", type=int, default=1080)
-    parser.add_argument("--hr_width", type=int, default=3840)
-    parser.add_argument("--hr_height", type=int, default=2160)
+    parser.add_argument("--train_list", required=True,
+                        help="CSV listing (lr_png_dir, even_hr_png_dir, hr_png_dir, num_frames) per row")
 
     parser.add_argument("--scale", type=int, default=2)
     parser.add_argument("--patch_size", type=int, default=96)
     parser.add_argument("--samples_per_epoch", type=int, default=10000)
+    parser.add_argument("--train_ratio", type=float, default=0.8)
 
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=50)
@@ -68,16 +71,18 @@ def parse_args():
     parser.add_argument("--lr_end_factor", type=float, default=0.01,
                         help="LR decays linearly to lr * lr_end_factor by the final epoch")
 
-    parser.add_argument("--val_stride", type=int, default=384)
-    parser.add_argument("--bit_depth", type=int, default=10)
-    parser.add_argument("--train_ratio", type=float, default=0.8)
-
-    parser.add_argument("--png_dir", default=None, help="Optional directory of HR PNG images for extra training data")
-
-    parser.add_argument("--save_dir", default="checkpoints_y")
+    parser.add_argument("--save_dir", default="checkpoints_rgb")
     parser.add_argument("--resume", default=None)
+    parser.add_argument("--freeze_backbone", action="store_true",
+                        help="Freeze CARNMBackbone weights and only train fusion_layer")
 
     return parser.parse_args()
+
+
+def freeze_backbone(model):
+    for param in model.carn_layer.parameters():
+        param.requires_grad = False
+    print("[freeze_backbone] CARNMBackbone parameters frozen")
 
 
 def validate(model, val_loader, criterion, device):
@@ -86,20 +91,20 @@ def validate(model, val_loader, criterion, device):
     total_samples = 0
 
     with torch.no_grad():
-        for (lr_y, hr_w_y), hr_y in val_loader:
-            lr_y = lr_y.to(device)
-            hr_y = hr_y.to(device)
-            hr_w_y = hr_w_y.to(device)
+        for (lr_rgb, prv_rgb, nxt_rgb), hr_rgb in val_loader:
+            lr_rgb = lr_rgb.to(device)
+            prv_rgb = prv_rgb.to(device)
+            nxt_rgb = nxt_rgb.to(device)
+            hr_rgb = hr_rgb.to(device)
 
-            pred_y = model(lr_y, hr_w_y)
-            loss = criterion(pred_y, hr_y)
+            pred = model(lr_rgb, prv_rgb, nxt_rgb)
+            loss = criterion(pred, hr_rgb)
 
-            batch_size = lr_y.size(0)
+            batch_size = lr_rgb.size(0)
             total_loss += loss.item() * batch_size
             total_samples += batch_size
 
-    avg_loss = total_loss / total_samples
-    return avg_loss
+    return total_loss / total_samples
 
 
 def train():
@@ -117,55 +122,23 @@ def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Device:", device)
 
-    train_dataset = YOnlySRDataset(
-        list_path=args.video_list,
-        lr_width=args.lr_width,
-        lr_height=args.lr_height,
-        hr_width=args.hr_width,
-        hr_height=args.hr_height,
+    train_dataset = PNGSRDataset(
+        list_path=args.train_list,
         scale=args.scale,
         lr_patch_size=args.patch_size,
         samples_per_epoch=args.samples_per_epoch,
-        bit_depth=args.bit_depth,
         train_ratio=args.train_ratio,
-        dataset_type="train"
+        dataset_type="train",
     )
 
-    val_dataset = YOnlySRDataset(
-        list_path=args.video_list,
-        lr_width=args.lr_width,
-        lr_height=args.lr_height,
-        hr_width=args.hr_width,
-        hr_height=args.hr_height,
+    val_dataset = PNGSRDataset(
+        list_path=args.train_list,
         scale=args.scale,
         lr_patch_size=args.patch_size,
-        # stride=args.val_stride,
-        samples_per_epoch=100,
-        bit_depth=args.bit_depth,
+        samples_per_epoch=int(args.samples_per_epoch*(1-args.train_ratio)),
         train_ratio=args.train_ratio,
-        dataset_type="val"
+        dataset_type="val",
     )
-
-    if args.png_dir is not None:
-        png_train_dataset = PNGSRDataset(
-            hr_png_dir=args.png_dir,
-            scale=args.scale,
-            lr_patch_size=args.patch_size,
-            samples_per_epoch=args.samples_per_epoch,
-            train_ratio=args.train_ratio,
-            dataset_type="train",
-        )
-        png_val_dataset = PNGSRDataset(
-            hr_png_dir=args.png_dir,
-            scale=args.scale,
-            lr_patch_size=args.patch_size,
-            samples_per_epoch=100,
-            train_ratio=args.train_ratio,
-            dataset_type="val",
-        )
-        train_dataset = ConcatDataset([train_dataset, png_train_dataset])
-        val_dataset = ConcatDataset([val_dataset, png_val_dataset])
-        print(f"PNG dir: {args.png_dir} — added {len(png_train_dataset)} train / {len(png_val_dataset)} val samples")
 
     train_loader = DataLoader(
         train_dataset,
@@ -183,26 +156,38 @@ def train():
         pin_memory=True,
     )
 
-    print("Video list:", args.video_list)
+    print("Train list:", args.train_list)
     print("Train ratio:", args.train_ratio)
     print("Train samples per epoch:", len(train_dataset))
     print("Val samples:", len(val_dataset))
 
     config_path = os.path.join(os.path.dirname(__file__), "models", "model_config.json")
-    model = EDSREnd2EndModel.from_config(config_path).to(device)
+    model = CARNEnd2EndModel.from_config(config_path).to(device)
 
     if args.resume is not None:
         print("Loading checkpoint:", args.resume)
         model.load_state_dict(torch.load(args.resume, map_location=device))
 
-    criterion = nn.L1Loss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.freeze_backbone:
+        freeze_backbone(model)
+
+    # criterion = nn.L1Loss()/
+    # criterion = nn.MSELoss()
+    criterion = CombinedLoss()
+    trainable_params = (
+        model.fusion_layer.parameters()
+        if args.freeze_backbone
+        else model.parameters()
+    )
+    optimizer = torch.optim.AdamW(trainable_params, lr=args.lr)
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
         start_factor=1.0,
         end_factor=args.lr_end_factor,
         total_iters=args.epochs,
     )
+
+    
 
     best_val_loss = float("inf")
 
@@ -213,31 +198,28 @@ def train():
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}")
 
-        for (lr_y, hr_w_y), hr_y in pbar:
-            lr_y = lr_y.to(device)
-            hr_w_y = hr_w_y.to(device)
-            hr_y = hr_y.to(device)
-        
-            # prv_lr_y = prv_lr_y.to(device)
-            # nx_lr_y = nx_lr_y.to(device)
+        for (lr_rgb, prv_rgb, nxt_rgb), hr_rgb in pbar:
+            lr_rgb = lr_rgb.to(device)
+            prv_rgb = prv_rgb.to(device)
+            nxt_rgb = nxt_rgb.to(device)
+            hr_rgb = hr_rgb.to(device)
 
-            pred_y = model(lr_y, hr_w_y)
-            loss = criterion(pred_y, hr_y)
+            pred = model(lr_rgb, prv_rgb, nxt_rgb)
+            loss = criterion(pred, hr_rgb)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            batch_size = lr_y.size(0)
+            batch_size = lr_rgb.size(0)
             total_loss += loss.item() * batch_size
             total_samples += batch_size
 
             pbar.set_postfix(train_loss=loss.item())
 
-
         train_loss = total_loss / total_samples
 
-        val_pbar = tqdm(val_loader, desc=f"Epoch {epoch}/{args.epochs}")
+        val_pbar = tqdm(val_loader, desc=f"Epoch {epoch}/{args.epochs} [val]")
         val_loss = validate(model, val_pbar, criterion, device)
 
         scheduler.step()
@@ -249,7 +231,6 @@ def train():
             f"val_loss = {val_loss:.6f}, "
             f"lr = {current_lr:.2e}"
         )
-
 
         with open(log_path, "a", newline="") as f:
             writer = csv.writer(f)

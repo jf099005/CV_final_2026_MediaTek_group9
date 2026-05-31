@@ -11,3 +11,5 @@
 *.yuv
 *.xlsx
 /warped_hr
+/no_use
+CARN-pytorch

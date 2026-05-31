@@ -1,30 +1,18 @@
 #!/bin/bash
 
-echo "Frame generation started"
+echo "Model inference started"
 
 BASE_DIR="./bitstream/base"
 ENHANCE_DIR="./bitstream/enhance"
 OUTPUT_DIR="results"
 
-PYTHON_SCRIPT="main.py"
-# MODEL_PATH: path to a full trained CARN combined checkpoint (backbone + fusion).
-# Leave empty to use the CARN-M pretrained backbone only (loaded from config).
-# Once a combined checkpoint is trained, set this to e.g.:
-#   ./RGB_SR/checkpoints_rgb/best_carn.pth
-MODEL_PATH=""
-CONFIG_PATH="./RGB_SR/models/model_config.json"
+PYTHON_SCRIPT="model_inference.py"
 
 BASE_WIDTH=1920
 BASE_HEIGHT=1080
 
 ENH_WIDTH=3840
 ENH_HEIGHT=2160
-
-ONLY_EDSR=true
-
-naive=false
-
-
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -67,15 +55,11 @@ do
         --base "$base_file" \
         --enhancement "$enhance_file" \
         --output "$output_file" \
-        $( [ -n "$MODEL_PATH" ] && echo "--model_path $MODEL_PATH" ) \
-        --config_path "$CONFIG_PATH" \
         --base_width "$BASE_WIDTH" \
         --base_height "$BASE_HEIGHT" \
         --enh_width "$ENH_WIDTH" \
         --enh_height "$ENH_HEIGHT" \
-        --png_output_dir "$png_dir" \
-        $( [ "$ONLY_EDSR" = true ] && echo "--only_edsr" ) \
-        $( [ "$naive"     = true ] && echo "--naive" )
+        --png_output_dir "$png_dir"
 
     echo "Finished: $base_name"
 done

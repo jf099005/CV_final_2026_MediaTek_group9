@@ -1,24 +1,23 @@
 from utils.Resize import resize_yuv420_10bit
 from utils.Wraping import backward_warp_plane_with_mask
 from utils.RAFTFlow import RAFTFlowEstimator
-from utils.YOnlySR import YOnlySR
 import cv2
 import numpy as np
 
-raft_estimator = RAFTFlowEstimator()
+# Lazy singleton — RAFT weights are only loaded when optical flow is first needed
+# (skipped entirely when only_edsr=True with an RGB/CARN model).
+_raft_estimator = None
 
-def load_model(model_path):
-    sr_model = YOnlySR(
-        model_path=model_path,
-        bit_depth=10,
-    )
-    return sr_model
+def _get_raft():
+    global _raft_estimator
+    if _raft_estimator is None:
+        _raft_estimator = RAFTFlowEstimator()
+    return _raft_estimator
+
 
 def upscale_yuv420_10bit_with_sr(model, y, u, v, e_prev_y, e_prev_u, e_prev_v, e_next_y, e_next_u, e_next_v):
     y_4k, u_4k, v_4k = model.upscale_yuv420(y, u, v, e_prev_y, e_next_y)
     return y_4k, u_4k, v_4k
-
-import numpy as np
 
 
 def fuse_sources_with_mask_adaptive(
@@ -138,39 +137,29 @@ def fuse_chroma(base, prev, next_, mask_prev, mask_next):
     out = out / weight
     return np.clip(np.rint(out), 0, 1023).astype(np.uint16)
 
-def generate_frame(sr_model,b_y, b_u, b_v,
+def generate_frame(sr_model, b_y, b_u, b_v,
             e_prev_y, e_prev_u, e_prev_v,
             e_next_y, e_next_u, e_next_v,
             only_edsr=False,
-            hr_input_type = 'warped'
+            hr_input_type='warped'
         ):
-                
-        if only_edsr:
-            if sr_model is None:
-                b_4k_y, b_4k_u, b_4k_v = resize_yuv420_10bit(b_y, b_u, b_v, 3840, 2160, interpolation=cv2.INTER_LINEAR)
-            else:
-                pass
-            #     b_4k_y, b_4k_u, b_4k_v = resize_yuv420_10bit(b_y, b_u, b_v, 3840, 2160, interpolation=cv2.INTER_LINEAR)
-            #     warped_y = fuse_sources_with_mask_adaptive(
-            #         b_4k_y,
-            #         warped_prev_y,
-            #         warped_next_y,
-            #         mask_prev_y,
-            #         mask_next_y,
-            #         bit_depth=10,
-            #         base_weight=0.3,
-            #         sigma=30.0,
-            #     )
-            #     # warped_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u)
-            #     # warped_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v)
-            #     b_4k_y, b_4k_u, b_4k_v = sr_model.upscale_yuv420_with_wraped_img(b_y, b_u, b_v, warped_y)            
 
+        # ------------------------------------------------------------------
+        # RGB model path: model handles all 3 channels internally.
+        # ------------------------------------------------------------------
+        is_rgb_model = sr_model is not None and hasattr(sr_model, 'upscale_rgb')
 
-            # return b_4k_y, b_4k_u, b_4k_v        
-        
-        # e_prev_fhd_y, e_prev_fhd_u, e_prev_fhd_v = resize_yuv420_10bit(e_prev_y, e_prev_u, e_prev_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
-        # e_next_fhd_y, e_next_fhd_u, e_next_fhd_v = resize_yuv420_10bit(e_next_y, e_next_u, e_next_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
-        
+        if is_rgb_model and only_edsr:
+            # Pure RGB SR — skip RAFT entirely, return model output directly.
+            return sr_model.upscale_rgb(
+                b_y, b_u, b_v,
+                e_prev_y, e_prev_u, e_prev_v,
+                e_next_y, e_next_u, e_next_v,
+            )
+
+        # ------------------------------------------------------------------
+        # RAFT optical flow (needed for warped path or flow-based Y fusion).
+        # ------------------------------------------------------------------
         raft_w = 960
         raft_h = 544
 
@@ -182,77 +171,66 @@ def generate_frame(sr_model,b_y, b_u, b_v,
 
         e_prev_raft_y, _, _ = resize_yuv420_10bit(
             e_prev_y, e_prev_u, e_prev_v,
-                raft_w, raft_h,
-                interpolation=cv2.INTER_AREA
-            )
+            raft_w, raft_h,
+            interpolation=cv2.INTER_AREA
+        )
 
         e_next_raft_y, _, _ = resize_yuv420_10bit(
             e_next_y, e_next_u, e_next_v,
             raft_w, raft_h,
             interpolation=cv2.INTER_AREA
-            )
+        )
 
-        flow_curr2prev = raft_estimator.compute_flow(
-            b_raft_y,
-            e_prev_raft_y
-            )
+        flow_curr2prev = _get_raft().compute_flow(b_raft_y, e_prev_raft_y)
+        flow_curr2next = _get_raft().compute_flow(b_raft_y, e_next_raft_y)
 
-        flow_curr2next = raft_estimator.compute_flow(
-            b_raft_y,
-            e_next_raft_y
-            )
+        flow_curr2prev_4k = resize_flow(flow_curr2prev, out_width=3840, out_height=2160)
+        flow_curr2next_4k = resize_flow(flow_curr2next, out_width=3840, out_height=2160)
 
-        flow_curr2prev_4k = resize_flow(
-            flow_curr2prev,
-            out_width=3840,
-            out_height=2160
-            )
-
-        flow_curr2next_4k = resize_flow(
-            flow_curr2next,
-            out_width=3840,
-            out_height=2160
-            )       
-        
         flow_prev_uv = resize_flow(flow_curr2prev, 1920, 1080)
         flow_next_uv = resize_flow(flow_curr2next, 1920, 1080)
 
-        warped_prev_y, mask_prev_y = backward_warp_plane_with_mask(
-            e_prev_y,
-            flow_curr2prev_4k
-        )
+        warped_prev_y, mask_prev_y = backward_warp_plane_with_mask(e_prev_y, flow_curr2prev_4k)
+        warped_next_y, mask_next_y = backward_warp_plane_with_mask(e_next_y, flow_curr2next_4k)
 
-        warped_next_y, mask_next_y = backward_warp_plane_with_mask(
-            e_next_y,
-            flow_curr2next_4k
-        )
+        warped_prev_u, mask_prev_u = backward_warp_plane_with_mask(e_prev_u, flow_prev_uv)
+        warped_prev_v, mask_prev_v = backward_warp_plane_with_mask(e_prev_v, flow_prev_uv)
+        warped_next_u, mask_next_u = backward_warp_plane_with_mask(e_next_u, flow_next_uv)
+        warped_next_v, mask_next_v = backward_warp_plane_with_mask(e_next_v, flow_next_uv)
 
-        warped_prev_u, mask_prev_u = backward_warp_plane_with_mask(
-            e_prev_u,
-            flow_prev_uv
-        )
+        # ------------------------------------------------------------------
+        # RGB model with flow-based Y refinement (only_edsr=False).
+        # ------------------------------------------------------------------
+        if is_rgb_model:
+            b_4k_y, b_4k_u, b_4k_v = sr_model.upscale_rgb(
+                b_y, b_u, b_v,
+                e_prev_y, e_prev_u, e_prev_v,
+                e_next_y, e_next_u, e_next_v,
+            )
+            P_y = fuse_sources_with_mask_adaptive(
+                b_4k_y,
+                warped_prev_y,
+                warped_next_y,
+                mask_prev_y,
+                mask_next_y,
+                bit_depth=10,
+                base_weight=0.3,
+                sigma=30.0,
+            )
+            # U/V already reconstructed from full RGB; apply chroma flow fusion on top.
+            P_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u)
+            P_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v)
+            return P_y, P_u, P_v
 
-        warped_prev_v, mask_prev_v = backward_warp_plane_with_mask(
-            e_prev_v,
-            flow_prev_uv
-        )
-
-        warped_next_u, mask_next_u = backward_warp_plane_with_mask(
-            e_next_u,
-            flow_next_uv
-        )
-
-        warped_next_v, mask_next_v = backward_warp_plane_with_mask(
-            e_next_v,
-            flow_next_uv
-        )
-
+        # ------------------------------------------------------------------
+        # Y-only model (original path, kept unchanged).
+        # ------------------------------------------------------------------
         if hr_input_type == 'prv and nxt':
             if sr_model is None:
                 b_4k_y, b_4k_u, b_4k_v = resize_yuv420_10bit(b_y, b_u, b_v, 3840, 2160, interpolation=cv2.INTER_LINEAR)
             else:
                 b_4k_y, b_4k_u, b_4k_v = upscale_yuv420_10bit_with_sr(sr_model, b_y, b_u, b_v, e_prev_y, e_prev_u, e_prev_v, e_next_y, e_next_u, e_next_v)
-        
+
         elif hr_input_type == 'warped':
             b_4k_y, b_4k_u, b_4k_v = resize_yuv420_10bit(b_y, b_u, b_v, 3840, 2160, interpolation=cv2.INTER_LINEAR)
             warped_y = fuse_sources_with_mask_adaptive(
@@ -265,10 +243,7 @@ def generate_frame(sr_model,b_y, b_u, b_v,
                 base_weight=0.3,
                 sigma=30.0,
             )
-            # warped_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u)
-            # warped_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v)
-            b_4k_y, b_4k_u, b_4k_v = sr_model.upscale_yuv420_with_wraped_img(b_y, b_u, b_v, warped_y)            
-            # b_4k_y, b_4k_u, b_4k_v = sr_model.upscale_yuv420_10bit_with_sr(b_y, b_u, b_v, e_prev_y, e_prev_u, e_prev_v, e_next_y, e_next_u, e_next_v)
+            b_4k_y, b_4k_u, b_4k_v = sr_model.upscale_yuv420_with_wraped_img(b_y, b_u, b_v, warped_y)
         else:
             raise ValueError(f"Unsupported hr_input_type: {hr_input_type}")
 
@@ -288,6 +263,5 @@ def generate_frame(sr_model,b_y, b_u, b_v,
 
         P_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u)
         P_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v)
-        
-        return P_y, P_u, P_v
 
+        return P_y, P_u, P_v
