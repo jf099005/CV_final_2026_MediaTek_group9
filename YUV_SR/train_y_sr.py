@@ -186,12 +186,40 @@ def train():
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1.0,
-        end_factor=args.lr_end_factor,
-        total_iters=args.epochs,
-    )
+
+    if args.scheduler == "cosine_warmup":
+        # Linear warmup + CosineAnnealing — SOTA for SR (SwinIR, HAT, BasicVSR++)
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=0.1,
+            end_factor=1.0,
+            total_iters=args.warmup_epochs,
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max(args.epochs - args.warmup_epochs, 1),
+            eta_min=args.min_lr,
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[args.warmup_epochs],
+        )
+        print(f"Scheduler: cosine_warmup (warmup={args.warmup_epochs} epochs, min_lr={args.min_lr:.1e})")
+    elif args.scheduler == "multistep":
+        milestones = [int(m) for m in args.milestones.split(",")] if args.milestones else [int(args.epochs * 0.5), int(args.epochs * 0.8)]
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=milestones, gamma=args.lr_gamma
+        )
+        print(f"Scheduler: multistep (milestones={milestones}, gamma={args.lr_gamma})")
+    else:  # linear
+        scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=args.lr_end_factor,
+            total_iters=args.epochs,
+        )
+        print(f"Scheduler: linear (end_factor={args.lr_end_factor})")
 
     best_val_loss = float("inf")
 
