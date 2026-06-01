@@ -129,7 +129,7 @@ def train():
     model = EDSRSmall(
         in_channels=1,
         out_channels=1,
-        num_features=64,
+        num_features=48,
         num_blocks=8,
         scale=args.scale,
     ).to(device)

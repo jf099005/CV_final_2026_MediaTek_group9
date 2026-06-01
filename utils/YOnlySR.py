@@ -27,13 +27,22 @@ class YOnlySR:
         self.scale = scale
         self.max_value = (1 << bit_depth) - 1
 
+        # self.model = EDSRSmall(
+        #     in_channels=1,
+        #     out_channels=1,
+        #     num_features=64,
+        #     num_blocks=8,
+        #     scale=scale,
+        # ).to(self.device)
+
         self.model = EDSRSmall(
             in_channels=1,
             out_channels=1,
-            num_features=64,
+            num_features=48,
             num_blocks=8,
             scale=scale,
-        ).to(self.device)
+        ).to(device)
+
 
         self.model.load_state_dict(
             torch.load(model_path, map_location=self.device, weights_only=True)

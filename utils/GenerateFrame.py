@@ -141,7 +141,8 @@ def fuse_chroma(base, prev, next_, mask_prev, mask_next):
 
 def generate_frame(sr_model,b_y, b_u, b_v
             ,e_prev_y, e_prev_u, e_prev_v
-            ,e_next_y, e_next_u, e_next_v):
+            ,e_next_y, e_next_u, e_next_v,
+            w_base = 0.3, sigma = 30):
         
         #upsample B[t] to 4K, downsample E[t-1] and E[t+1] to FHD for better flow estimation
         b_4k_y, b_4k_u, b_4k_v = upscale_yuv420_10bit_with_sr(sr_model, b_y, b_u, b_v)
@@ -233,7 +234,7 @@ def generate_frame(sr_model,b_y, b_u, b_v
             mask_next_y,
             bit_depth=10,
             base_weight=0.3,
-            sigma=30.0,
+            sigma=sigma,
         )
 
         P_u = fuse_sources_with_mask_adaptive(
@@ -244,7 +245,7 @@ def generate_frame(sr_model,b_y, b_u, b_v
             mask_next_u,
             bit_depth=10,
             base_weight=0.4,
-            sigma=30.0,
+            sigma=sigma,
         )
 
         P_v = fuse_sources_with_mask_adaptive(
@@ -253,9 +254,9 @@ def generate_frame(sr_model,b_y, b_u, b_v
             warped_next_v,
             mask_prev_v,
             mask_next_v,
-            bit_depth=10,
-            base_weight=0.4,
-            sigma=30.0,
+            bit_depth = 10,
+            base_weight = w_base,
+            sigma = sigma,
         )
         
         return P_y, P_u, P_v

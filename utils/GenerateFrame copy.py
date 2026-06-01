@@ -29,7 +29,7 @@ def fuse_sources_with_mask_adaptive(
     mask_prev=None,
     mask_next=None,
     bit_depth=10,
-    base_weight=0.3,
+    base_weight=0.5,
     sigma=30.0,
     use_prev_next_consistency=True,
     # base_fhd = None
