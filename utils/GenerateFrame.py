@@ -149,12 +149,12 @@ def generate_frame(sr_model,b_y, b_u, b_v
         e_prev_fhd_y, e_prev_fhd_u, e_prev_fhd_v = resize_yuv420_10bit(e_prev_y, e_prev_u, e_prev_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
         e_next_fhd_y, e_next_fhd_u, e_next_fhd_v = resize_yuv420_10bit(e_next_y, e_next_u, e_next_v, 1920, 1080, interpolation=cv2.INTER_CUBIC)
         
-        raft_w = 960
-        raft_h = 544
+        raft_w = 1280
+        raft_h = 720
 
-        b_raft_y, _, _ = resize_yuv420_10bit(
-            b_y, b_u, b_v,
-            raft_w, raft_h,
+        b_raft_y = cv2.resize(
+            b_4k_y,
+            (raft_w, raft_h),
             interpolation=cv2.INTER_AREA
         )
 
@@ -236,8 +236,27 @@ def generate_frame(sr_model,b_y, b_u, b_v
             sigma=30.0,
         )
 
-        P_u = fuse_chroma(b_4k_u, warped_prev_u, warped_next_u, mask_prev_u, mask_next_u)
-        P_v = fuse_chroma(b_4k_v, warped_prev_v, warped_next_v, mask_prev_v, mask_next_v)
+        P_u = fuse_sources_with_mask_adaptive(
+            b_4k_u,
+            warped_prev_u,
+            warped_next_u,
+            mask_prev_u,
+            mask_next_u,
+            bit_depth=10,
+            base_weight=0.4,
+            sigma=30.0,
+        )
+
+        P_v = fuse_sources_with_mask_adaptive(
+            b_4k_v,
+            warped_prev_v,
+            warped_next_v,
+            mask_prev_v,
+            mask_next_v,
+            bit_depth=10,
+            base_weight=0.4,
+            sigma=30.0,
+        )
         
         return P_y, P_u, P_v
 

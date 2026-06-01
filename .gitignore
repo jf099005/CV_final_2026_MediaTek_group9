@@ -6,3 +6,6 @@
 /orgYUV
 *.yuv
 *.xlsx
+/no_use
+/CARN-pytorch
+/BasicVSR_PlusPlus

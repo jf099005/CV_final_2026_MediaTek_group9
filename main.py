@@ -87,7 +87,7 @@ def main():
     _, raw_e_prev = next(enh_reader)
 
     sr_model = load_model(
-            model_path="YUV_SR\\checkpoints_y\\best.pth",
+            model_path="YUV_SR/checkpoints_y/best.pth",
     )
     with open(output_path, "wb") as out_f:
         for base_idx, raw_b in tqdm(
