@@ -1,0 +1,39 @@
+請按照以下順序執行
+
+## 安裝環境
+```bash
+python -3.10 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## 放置檔案
+請依照下列指示擺放檔案
+1. scriptTest
+    ./scriptTest
+2. bitstream
+    ./bitstream
+3 orgYUV
+    ./orgYUV
+
+此外，請確保utils資料夾內有下列腳本:
+    GenerateFrame.py  OpticalFlow.py   RAFTFlow.py  ReadAndWrite.py  Resize.py  Wraping.py  YOnlySR.py
+
+請確保YUV_SR資料夾內有下列腳本以及資料夾:
+    checkpoints_y  models  train_list.txt  train.sh  train_y_sr.py  utils
+
+若要進行訓練，請確保YUV_SR資料夾內有下列腳本、資料夾以及檔案:
+    checkpoints_y  dataset  models  plot.py train_list.txt  train.sh  train_y_sr.py  utils
+
+
+## 訓練方式
+
+## 執行upsample方式
+```bash
+bash ./FrameGen.sh
+```
+
+## 產生影片
+```bash
+bash ./gen_video.sh
+```
