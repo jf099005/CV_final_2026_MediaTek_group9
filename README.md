@@ -1,6 +1,7 @@
 ﻿# 4K Frame Reconstruction Using RAFT-based Warping and Super-Resolution
 
 ## Overview
+![Problem](docs/figure.png)
 This project aims to reconstruct high-resolution 4K video frames from low-resolution FHD base frames and neighboring 4K reference frames. Instead of directly upscaling the FHD frame, the proposed pipeline uses temporal information from adjacent 4K frames to recover high-frequency details.
 
 The system integrates RAFT-based optical flow estimation, backward warping, valid-mask filtering, adaptive fusion, and optional Y-channel super-resolution to improve the visual quality of generated 4K frames.
