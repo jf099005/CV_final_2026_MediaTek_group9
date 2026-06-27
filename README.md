@@ -8,8 +8,6 @@ This project aims to reconstruct high-resolution 4K YUV video frames from low-re
 
 The system integrates RAFT-based optical flow estimation, backward warping, valid-mask filtering, adaptive fusion, and optional Y-channel super-resolution to improve the visual quality of generated 4K frames.
 
-A Project Report is included in this repository:
-
 [View Report](docs/CV_2025_Final.pdf)
 
 
