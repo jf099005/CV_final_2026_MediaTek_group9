@@ -7,7 +7,7 @@ The system integrates RAFT-based optical flow estimation, backward warping, vali
 
 A Project Report is included in this repository:
 
-[View Report](docs/CV_2025_Final)
+[View Report](docs/CV_2025_Final.pdf)
 
 
 ## System Pipeline
