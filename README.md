@@ -61,7 +61,7 @@ flowchart LR
     B4 --> E1
 ```
 
-## Installation
+## Installation 
 
 ### 1. Clone the repository
 
@@ -87,16 +87,32 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-Run the shell script:
-```bash 
-bash FrameGen.sh
+### 1. Download example data
+The example bitstream is hosted externally due to its large file size.
+
+- [Download Example Bitstream](https://drive.google.com/file/d/1a--1J5K1HZ9qw1h1OOUiB6ZbXRYik0zY/view?usp=sharing)
+
+After downloading, extract `bitstream.zip` and place the `bitstream/` directory under the project root. The expected structure is:
+
+```text
+CV_final_2026_MediaTek_group9/
+└── bitstream/
+    ├── base/
+    ├── enhance/
+    └── upscaled/
+```
+### 2. Upsample the bitstream
+```bash
+bash ./FrameGen.sh
+```
+### 3. Generate video 
+```bash
+bash ./gen_video.sh
 ```
 
 ## Evaluation
+You can evaluate the BD-rate of the results from example data using: 
 ```bash 
 cd scriptTest
 python testOddFramesAMS05.py
-python testOddFramesProcession.py
-python testOddFramesWalkInPark.py
-python testOddFramesZombie.py
 ```
